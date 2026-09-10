@@ -1,125 +1,78 @@
 # App Finanças
 
-Protótipo de controle financeiro em português do Brasil, criado com Next.js App Router, React, TypeScript, Tailwind CSS, ESLint e npm.
+Aplicação de finanças pessoais em português do Brasil, com Next.js 16, React, TypeScript, Tailwind CSS e Supabase Auth/Postgres. O visual original foi preservado.
 
-## Executar localmente
+## Executar
 
-Use Node.js 22 ou superior e npm. O projeto foi validado com Node.js 24.
+Use Node.js 22 ou superior (validado com Node.js 24) e npm.
 
-```bash
-npm ci
-npm run dev
-```
+1. Instale as dependências com `npm ci`.
+2. Configure `.env.local` a partir de `.env.example`, usando somente URL e chave publicável do Supabase.
+3. Aplique as migrações, em ordem, seguindo [o guia do MVP financeiro](docs/financial-mvp.md).
+4. Confira as configurações de e-mail e redirecionamento no [guia de autenticação](docs/supabase.md).
+5. Execute `npm run dev` e abra http://localhost:3000.
 
-Abra http://localhost:3000. A página inicial leva ao dashboard.
+O projeto não aplica migrações nem publica infraestrutura automaticamente. Sem as tabelas, o aplicativo exibe um erro de configuração; não usa valores fictícios como fallback.
 
-| Comando | Função |
+## Funcionalidades
+
+- Cadastro, login, logout, confirmação de e-mail e recuperação de senha.
+- Configuração inicial editável: renda base, despesas fixas base e orçamento variável.
+- Categorias por usuário com criação, edição, arquivamento e reativação.
+- Receitas e despesas com criação, edição, exclusão confirmada e situação prevista/realizada.
+- Histórico por mês, intervalo dentro do mês, tipo, categoria, situação e descrição.
+- CSV dos registros filtrados com BOM UTF-8, separador `;`, vírgula decimal e proteção contra fórmulas.
+- Regras mensais de receitas/despesas e geração idempotente de previsões ao consultar o período.
+- Orçamentos variáveis por mês, gerais e por categoria.
+- Dashboard real e avisos internos em 70%, 85% e 100% do orçamento variável.
+- Perfil e fuso horário persistidos.
+
+Não há integração bancária, cartões/parcelamento, push, investimentos, aplicativos nativos ou execução agendada de recorrências.
+
+## Regras financeiras
+
+Valores são centavos inteiros, entre R$ 0,01 e R$ 999.999.999,99 por lançamento. O orçamento pode ser zero. Em branco significa orçamento não configurado.
+
+- Saldo realizado do mês = receitas realizadas − despesas realizadas.
+- Disponível no orçamento = limite variável − despesas variáveis realizadas.
+- Despesas fixas entram no saldo, mas não consomem o orçamento variável.
+- Previsões aparecem separadas e não alteram os totais realizados.
+- O período é mês calendário; não há início personalizado nem transporte automático de saldo/limites.
+- O fuso do perfil define a data atual. Lançamentos usam `date`, sem deslocamento por conversão de UTC.
+- Confirmar pagamento/recebimento altera a mesma ocorrência.
+- Editar uma regra preserva realizados e modifica previsões a partir do mês de vigência escolhido.
+- Regras mantêm versões para meses ainda não consultados. Um novo ajuste substitui as versões futuras a partir de sua vigência.
+- Excluir pela interface mantém uma marca de exclusão, impedindo regeneração da mesma ocorrência.
+
+## Verificação
+
+| Comando | Finalidade |
 | --- | --- |
-| `npm run dev` | Inicia o servidor de desenvolvimento. |
-| `npm run lint` | Executa o ESLint com regras do Next.js, React e TypeScript. |
-| `npm run build` | Gera a versão de produção e verifica os tipos. |
-| `npm start` | Serve a versão de produção após o build. |
-| `npm test` | Executa testes de cálculos e dos fluxos no navegador, em desktop e celular. |
-| `npm run test:unit` | Executa somente os testes de cálculos. |
+| `npm run lint` | ESLint. |
+| `npm run typecheck` | Geração de tipos de rotas e TypeScript sem emissão. |
+| `npm run test:unit` | Dinheiro, calendário, fuso, cálculos, CSV, validação e utilitários de autenticação; dispensa build/servidor. |
+| `npm run test:db` | Migrações, constraints, RLS e recorrências em PostgreSQL local em memória (PGlite). |
+| `npm run build` | Build de produção e tipos. |
+| `npm test` | Unitários e navegador; execute build antes. |
+| `npm run test:rls:remote` | Teste opcional com duas contas reais de teste e visitante, via API pública. |
 
-Os testes usam Playwright e o **Google Chrome instalado localmente**, em modo headless. Execute `npm run build` antes de `npm test`. A configuração inicia e encerra um servidor de produção em `127.0.0.1:3100`; deixe essa porta livre. Para instalar o Chrome pelo Playwright, quando necessário: `npx playwright install chrome`. Os relatórios, capturas e traces ficam em `test-results/`.
+Playwright usa o Google Chrome local em modo headless, desktop e celular. O servidor temporário usa `127.0.0.1:3100`; deixe a porta livre. Artefatos ficam em `test-results/`.
 
-## Telas e comportamento
+Os testes de autenticação pública interceptam o provedor e não enviam e-mails. Os testes financeiros de navegador exigem `E2E_EMAIL` e `E2E_PASSWORD`, de um projeto de testes com as migrações aplicadas. Sem essas variáveis, ficam explicitamente ignorados. O teste remoto de RLS exige ainda opt-in `RUN_REMOTE_RLS=1`; não é disparado por `npm test`.
 
-- `/login`: entrada simulada com e-mail e senha fictícios.
-- `/cadastro`: perfil demonstrativo, com confirmação de senha.
-- `/configuracao-inicial`: receita prevista, saldo inicial, reserva e limite.
-- `/dashboard`: resumo do mês, despesas por categoria, utilização do limite e últimas movimentações.
-- `/historico`: movimentações com busca e filtros por tipo, categoria e mês.
-- `/lancamento`: registro de despesa ou receita, com validação e confirmação.
-- `/planejamento`: edição do planejamento e dos limites por categoria.
-- `/configuracoes`: edição do perfil demonstrativo e acesso às preferências financeiras.
+## Organização
 
-No celular, a navegação fica na parte inferior e o botão flutuante abre um lançamento de despesa. O seletor de mês é compartilhado entre as telas internas. Um lançamento em outro mês seleciona automaticamente esse período.
-
-**Não há Supabase, autenticação real, banco de dados ou persistência.** As rotas são públicas. Nenhuma senha é armazenada. Os valores ficam no contexto React e voltam ao exemplo inicial ao recarregar a página. Use dados fictícios. A demonstração começa em setembro de 2026.
-
-## Regras do resumo financeiro
-
-Todos os valores são armazenados em centavos inteiros e exibidos com `Intl.NumberFormat("pt-BR")`, em reais.
-
-- Receitas e despesas consideram apenas as movimentações do mês selecionado.
-- Saldo = saldo inicial + receitas − despesas.
-- Disponível = saldo − valor reservado; pode ser negativo.
-- Utilização = despesas ÷ limite mensal × 100. O texto pode ultrapassar 100%; a barra visual termina em 100%.
-- Receita prevista é uma referência de planejamento e não aumenta o total recebido.
-- Limites por categoria são independentes do limite mensal; zero significa categoria sem limite.
-- Nesta etapa, as preferências financeiras são compartilhadas por todos os meses, sem transporte automático de saldo entre períodos.
-- Entradas monetárias usam o padrão brasileiro: `125,90` ou `1.250,00`. O limite mensal precisa ser positivo.
-- Datas usam `YYYY-MM-DD`, com apresentação em português sem mudança de dia por fuso horário.
-
-## Arquivos do projeto
-
-### Rotas e apresentação global
-
-Os grupos `(app)` e `(auth)` organizam layouts e não aparecem nas URLs.
-
-| Arquivo | Responsabilidade |
+| Local | Responsabilidade |
 | --- | --- |
-| `src/app/layout.tsx` | Define idioma, metadados e o provedor de dados compartilhado. |
-| `src/app/page.tsx` | Redireciona a raiz para `/dashboard`. |
-| `src/app/globals.css` | Importa Tailwind e define cores, componentes visuais, foco e layouts responsivos. |
-| `src/app/icon.svg` | Ícone próprio do aplicativo, usado pelo Next.js nos metadados. |
-| `src/app/not-found.tsx` | Página em português para endereços inexistentes. |
-| `src/app/(app)/layout.tsx` | Aplica a navegação e a estrutura das telas financeiras. |
-| `src/app/(app)/dashboard/page.tsx` | Rota e título da visão geral. |
-| `src/app/(app)/historico/page.tsx` | Rota e título do histórico. |
-| `src/app/(app)/lancamento/page.tsx` | Cabeçalho e formulário de lançamento rápido. |
-| `src/app/(app)/planejamento/page.tsx` | Cabeçalho e edição do planejamento. |
-| `src/app/(app)/configuracoes/page.tsx` | Rota e título das configurações. |
-| `src/app/(auth)/layout.tsx` | Layout visual compartilhado entre login e cadastro. |
-| `src/app/(auth)/login/page.tsx` | Exibe o formulário em modo login. |
-| `src/app/(auth)/cadastro/page.tsx` | Exibe o formulário em modo cadastro. |
-| `src/app/configuracao-inicial/page.tsx` | Tela independente para configurar os valores iniciais. |
-
-### Componentes, tipos e dados
-
-| Arquivo | Responsabilidade |
-| --- | --- |
-| `src/components/app-shell.tsx` | Menu lateral, navegação móvel, seletor de mês, perfil e botão flutuante. |
-| `src/components/auth-form.tsx` | Login/cadastro simulados, validação e navegação para a próxima tela. |
-| `src/components/dashboard.tsx` | Indicadores, gráfico por categoria, limite e últimas movimentações. |
-| `src/components/finance-provider.tsx` | Estado em memória, inclusão de lançamentos e atualização de preferências. |
-| `src/components/financial-form.tsx` | Formulário compartilhado entre configuração inicial e planejamento. |
-| `src/components/history.tsx` | Busca, filtros e totais do histórico. |
-| `src/components/icon.tsx` | Ícones SVG reutilizáveis sem dependência de biblioteca de ícones. |
-| `src/components/settings.tsx` | Edição do perfil e acesso às configurações financeiras. |
-| `src/components/transaction-form.tsx` | Validação, registro e confirmação de receitas e despesas. |
-| `src/components/transaction-list.tsx` | Tabela responsiva ordenada por data, com estado vazio. |
-| `src/components/ui.tsx` | Marca, cabeçalhos e barras de progresso acessíveis. |
-| `src/data/mock-data.ts` | Categorias, perfil, limites e movimentações de exemplo. |
-| `src/lib/finance.ts` | Conversão monetária, apresentação de datas e cálculos do resumo. |
-| `src/types/finance.ts` | Contratos TypeScript para categorias, lançamentos e configurações. |
-
-### Ferramentas, documentação e testes
-
-| Arquivo | Responsabilidade |
-| --- | --- |
-| `package.json` | Nome, scripts, dependências e versão mínima de Node.js do projeto. |
-| `package-lock.json` | Versões resolvidas para instalações reproduzíveis com npm. |
-| `next.config.ts` | Ponto de configuração do Next.js; mantém os padrões do scaffold. |
-| `tsconfig.json` | TypeScript estrito e alias `@/*` para `src/*`. |
-| `eslint.config.mjs` | Regras de qualidade do Next.js e TypeScript. |
-| `postcss.config.mjs` | Integração do Tailwind CSS com PostCSS. |
-| `.gitignore` | Exclui dependências, builds, variáveis locais e artefatos dos testes. |
-| `playwright.config.ts` | Projetos de testes, navegador e servidor de validação. |
-| `tests/finance.spec.ts` | Testes de conversão, saldo, reserva, seleção de mês e limites. |
-| `tests/app.spec.ts` | Testes dos formulários, navegação, filtros, estado e responsividade. |
-| `README.md` | Instruções de execução, escopo, regras e descrição de todos os arquivos. |
-
-### Arquivos gerados e limpeza do template
-
-- `next-env.d.ts`: referências de tipos geradas pelo Next.js; não editar manualmente.
-- `.next/`: saída e cache do desenvolvimento/build, gerados automaticamente.
-- `node_modules/`: dependências instaladas pelo npm.
-- `test-results/`: capturas e traces gerados pelos testes.
-- `*.tsbuildinfo`: cache incremental do TypeScript, quando gerado.
-- Os cinco SVGs de exemplo de `public/` e o favicon padrão foram removidos; a marca usa `src/app/icon.svg`. A pasta `public/` permanece disponível para futuros arquivos estáticos.
-- `AGENTS.md` não foi recriado.
-
-O projeto foi gerado na própria pasta do repositório com o [create-next-app](https://nextjs.org/docs/app/api-reference/cli/create-next-app). No Windows, foi usado o caminho equivalente `financialapp` em minúsculas para atender à validação de nomes npm, sem renomear ou mover a pasta original.
+| `supabase/migrations/` | Schema, RLS, inicialização e funções financeiras versionadas. |
+| `src/lib/finance-server.ts` | Consultas e gravações com usuário validado, validação e RLS. |
+| `src/app/api/finance/route.ts` | API autenticada, sem cache compartilhado, com verificação de origem em gravações. |
+| `src/lib/finance.ts` | Regras puras de dinheiro, calendário, resumo, filtros e CSV. |
+| `src/lib/finance-validation.ts` | Validação de campos aceitos pelo servidor. |
+| `src/lib/supabase/`, `src/proxy.ts` | Clientes separados e sessão em cookies. |
+| `src/components/finance-provider.tsx` | Carregamento, recarga e estado das consultas; sem dados simulados. |
+| `src/components/` | Telas e formulários, mantendo as classes e navegação existentes. |
+| `src/app/(protected)/` | Rotas financeiras com validação de sessão no servidor. |
+| `scripts/database.test.mjs` | Testes locais de Postgres, com operações sob papéis sujeitos a RLS. |
+| `scripts/rls-remote.test.mjs` | Verificação opcional de duas contas via Supabase Auth e Data API. |
+| `docs/financial-mvp.md` | Ordem dos SQLs, decisões, limitações e roteiro de validação. |

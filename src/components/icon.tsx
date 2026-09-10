@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react";
 
 const paths = {
+  moon: "M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z",
+  sun: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5",
   wallet: "M3 6h16v14H3V6Zm0 0V4h13v2m0 6h5v4h-5v-4Z",
   dashboard: "M3 3h7v7H3V3Zm11 0h7v7h-7V3ZM3 14h7v7H3v-7Zm11 0h7v7h-7v-7Z",
   history: "M4 7h16M4 12h16M4 17h10",
