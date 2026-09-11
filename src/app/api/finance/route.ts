@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { authenticatedClient, FinanceError, mutate, snapshot } from "@/lib/finance-server";
 import { ValidationError } from "@/lib/finance-validation";
+import { isSameOrigin } from "@/lib/request-origin";
 
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
@@ -16,7 +17,8 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   try {
-    if (request.headers.get("origin") !== request.nextUrl.origin) throw new FinanceError("Origem da solicitação não permitida.", 403);
+    // NextURL normalizes loopback IPs to localhost; Host preserves the actual origin.
+    if (!isSameOrigin(request.headers.get("origin"), request.headers.get("host"), request.nextUrl.protocol)) throw new FinanceError("Origem da solicitação não permitida.", 403);
     if (!request.headers.get("content-type")?.startsWith("application/json")) throw new FinanceError("Formato inválido.", 415);
     const { client, user } = await authenticatedClient();
     const raw = await request.text();

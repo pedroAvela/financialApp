@@ -22,10 +22,11 @@ O projeto não aplica migrações nem publica infraestrutura automaticamente. Se
 - Receitas e despesas com criação, edição, exclusão confirmada e situação prevista/realizada.
 - Histórico por mês, intervalo dentro do mês, tipo, categoria, situação e descrição.
 - CSV dos registros filtrados com BOM UTF-8, separador `;`, vírgula decimal e proteção contra fórmulas.
-- Regras mensais de receitas/despesas e geração idempotente de previsões ao consultar o período.
+- Regras mensais de receitas/despesas e geração idempotente de ocorrências ao consultar o período. Receitas recorrentes até hoje passam a realizadas pela data do perfil.
 - Orçamentos variáveis por mês, gerais e por categoria.
 - Dashboard real e avisos internos em 70%, 85% e 100% do orçamento variável.
 - Perfil e fuso horário persistidos.
+- Tema claro/escuro com preferência do navegador e espaçamento ajustado entre os blocos.
 
 Não há integração bancária, cartões/parcelamento, push, investimentos, aplicativos nativos ou execução agendada de recorrências.
 
@@ -39,6 +40,7 @@ Valores são centavos inteiros, entre R$ 0,01 e R$ 999.999.999,99 por lançament
 - Previsões aparecem separadas e não alteram os totais realizados.
 - O período é mês calendário; não há início personalizado nem transporte automático de saldo/limites.
 - O fuso do perfil define a data atual. Lançamentos usam `date`, sem deslocamento por conversão de UTC.
+- Receitas recorrentes são realizadas na data programada ao consultar o mês; as futuras ficam previstas. Ajustes manuais no histórico mantêm a situação escolhida.
 - Confirmar pagamento/recebimento altera a mesma ocorrência.
 - Editar uma regra preserva realizados e modifica previsões a partir do mês de vigência escolhido.
 - Regras mantêm versões para meses ainda não consultados. Um novo ajuste substitui as versões futuras a partir de sua vigência.

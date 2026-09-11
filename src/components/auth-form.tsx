@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Icon } from "@/components/icon";
 import { createClient } from "@/lib/supabase/client";
 import { authErrorMessage, safeNext } from "@/lib/auth";
 
 export function AuthForm({ signup = false, next, invalidLink = false }: { signup?: boolean; next?: string; invalidLink?: boolean }) {
-  const router = useRouter();
   const [error, setError] = useState(invalidLink ? "Este link é inválido ou expirou. Tente entrar ou solicite um novo link de recuperação." : "");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,16 +33,15 @@ export function AuthForm({ signup = false, next, invalidLink = false }: { signup
         });
         if (error) throw error;
         if (result.session) {
-          router.replace("/configuracao-inicial");
-          router.refresh();
+          window.location.replace("/configuracao-inicial");
           return;
         }
         setMessage("Verifique seu e-mail para confirmar o cadastro. Se você já tem uma conta, entre ou recupere sua senha.");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.replace(safeNext(next));
-        router.refresh();
+        // Discard route prefetches made before the session cookie was available.
+        window.location.replace(safeNext(next));
         return;
       }
     } catch (error) {

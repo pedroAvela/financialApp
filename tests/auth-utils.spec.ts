@@ -1,5 +1,17 @@
 import { expect, test } from "@playwright/test";
 import { authErrorMessage, internalRoutes, isProtectedPath, safeNext } from "../src/lib/auth";
+import { isSameOrigin } from "../src/lib/request-origin";
+
+test("origem respeita host, porta e protocolo sem normalizar loopback", () => {
+  expect(isSameOrigin("http://127.0.0.1:3100", "127.0.0.1:3100", "http:")).toBe(true);
+  expect(isSameOrigin("http://localhost:3000", "localhost:3000", "http:")).toBe(true);
+  expect(isSameOrigin("https://app.example", "app.example", "https:")).toBe(true);
+  for (const origin of [null, "null", "https://outro.example", "http://127.0.0.1:3000", "http://localhost:3100", "https://127.0.0.1:3100"]) {
+    expect(isSameOrigin(origin, "127.0.0.1:3100", "http:")).toBe(false);
+  }
+  expect(isSameOrigin("https://app.example", null, "https:")).toBe(false);
+  expect(isSameOrigin("https://app.example", "evil@app.example", "https:")).toBe(false);
+});
 
 test("redirecionamentos aceitam somente destinos internos conhecidos", () => {
   for (const value of [undefined, null, ["/historico"], "https://evil.example", "//evil.example", "/\\evil.example", "/login", "/auth/confirm", "/%2f%2fevil.example", "/dashboard\r\nLocation: https://evil.example"]) {

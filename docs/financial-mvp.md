@@ -24,6 +24,9 @@ Se não houver tabelas financeiras, execute uma vez, no SQL Editor do projeto co
 
 1. `supabase/migrations/202609100001_financial_schema.sql`
 2. `supabase/migrations/202609100002_financial_functions.sql`
+3. `supabase/migrations/202609100003_income_by_date.sql`
+
+**Se as migrações 001 e 002 já foram aplicadas, execute somente `202609100003_income_by_date.sql`.** Não repita as anteriores. A terceira é incremental: adiciona o controle de realização por data e atualiza a geração de ocorrências, preservando tabelas, IDs e histórico realizado. Após aplicá-la, reabra o mês no aplicativo para atualizar as receitas previstas existentes.
 
 Cada arquivo usa uma transação. A primeira cria tabelas, índices, constraints, grants, RLS e validações. A segunda cria as funções, o trigger de novos usuários e preenche perfis/categorias de usuários existentes. Os nomes versionados também permitem usar o fluxo normal de migrações da CLI; a aplicação não executa esse fluxo automaticamente.
 
@@ -72,13 +75,23 @@ Regra e ocorrência são entidades distintas. A aplicação chama `generate_occu
 
 A geração usa bloqueios em ordem consistente e uma constraint única em `(user_id, recurrence_id, occurrence_month)`, além de `ON CONFLICT DO NOTHING`. Recarregar ou fazer chamadas simultâneas não deve duplicar a ocorrência. Vencimentos como dia 31 em fevereiro são ajustados ao último dia do mês.
 
+Receitas recorrentes (inclusive a renda da configuração inicial) com data de recebimento **até hoje**, no fuso do perfil, são realizadas ao consultar o período. As futuras permanecem previstas. Exemplo: ao consultar setembro no dia 10, a receita mensal do dia 5 já entra nas receitas realizadas e aparece no histórico como **Realizada pela data**. Essa classificação segue a data programada; não é uma confirmação bancária.
+
+A coluna `auto_realize` identifica receitas recorrentes que seguem essa regra. Previsões antigas dessas receitas são adaptadas pela migração 003. Uma edição manual da ocorrência desativa esse comportamento para ela, mantendo a situação escolhida mesmo após recarregar. Lançamentos avulsos respeitam a situação informada; despesas recorrentes continuam dependendo da confirmação de pagamento.
+
 Confirmar pagamento/recebimento altera `status` da mesma transação. Edição avulsa altera somente aquela ocorrência; a regra é editada em Planejamento.
 
-Alterar a regra exige vigência no mês atual ou posterior, segundo o fuso do perfil. Apenas previsões desse mês em diante são atualizadas. Realizados e ocorrências excluídas não são alterados. Versões da regra preservam os meses anteriores ainda não gerados. Uma nova edição substitui versões futuras já programadas a partir da vigência escolhida.
+Antes de alterar a regra, receitas automáticas já vencidas são realizadas para preservar seu valor histórico. Alterar a regra exige vigência no mês atual ou posterior, segundo o fuso do perfil. Apenas previsões desse mês em diante são atualizadas. Realizados e ocorrências excluídas não são alterados. Versões da regra preservam os meses anteriores ainda não gerados. Uma nova edição substitui versões futuras já programadas a partir da vigência escolhida.
 
 Encerrar uma regra remove suas previsões não realizadas a partir do mês informado, preservando ocorrências realizadas e a versão anterior para os meses precedentes. Categorias arquivadas impedem novas associações e geração de novas previsões; os registros históricos continuam disponíveis.
 
 A exclusão confirmada pela interface grava `deleted_at`. Essa marca mantém a chave da ocorrência e impede sua recriação. Exclusão física manual pela Data API, permitida para transações próprias, remove essa proteção; para reproduzir o comportamento da interface, atualize a marca de exclusão.
+
+## Espaçamento e temas
+
+Os blocos financeiros compartilham espaçamento vertical, com ajustes entre cartões, limites, campos e ações para desktop e celular. A estrutura das telas e o fluxo de autenticação foram preservados.
+
+O botão de sol/lua fica no cabeçalho das telas internas, da configuração inicial e das telas de autenticação. Na primeira visita o tema acompanha o sistema; depois de escolher, a preferência é salva neste navegador e vale entre páginas e recargas. A escolha de tema não modifica o perfil financeiro nem exige configuração no Supabase. Os controles nativos também acompanham o tema usando [os recursos de preferência de cores do navegador](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/prefers-color-scheme).
 
 ## CSV
 
@@ -96,14 +109,22 @@ npm test
 npm run test:rls:remote
 ```
 
-**Testes locais de banco:** `scripts/database.test.mjs` executa as duas migrações no PostgreSQL em memória do PGlite. Cria um usuário antes da migração e outro depois. Somente a preparação usa o proprietário do banco; as operações financeiras mudam para `authenticated` sem BYPASSRLS ou para `anon`. Os helpers de identidade do Supabase são simulados localmente. Esses testes não verificam emissão de JWT, PostgREST, configuração remota nem concorrência real entre conexões.
+**Testes locais de banco:** `scripts/database.test.mjs` executa as três migrações no PostgreSQL em memória do PGlite. Cria um usuário antes da migração e outro depois. Somente a preparação usa o proprietário do banco; as operações financeiras mudam para `authenticated` sem BYPASSRLS ou para `anon`. Os helpers de identidade do Supabase são simulados localmente. Esses testes não verificam emissão de JWT, PostgREST, configuração remota nem concorrência real entre conexões.
 
 **Testes unitários:** dinheiro, datas inválidas/bissextos, fuso e virada de mês, previsões, saldo, fixas/variáveis, ausência de limite versus zero, alertas, validação de entrada, recorrências e CSV.
 
-**Navegador sem conta:** autenticação pública, proteção das rotas/API, origem de gravações, formulários e responsividade. As chamadas de envio de e-mail são interceptadas.
+**Navegador sem conta:** autenticação pública, proteção das rotas/API, origem de gravações, formulários, responsividade e tema claro/escuro com persistência da escolha. As chamadas de envio de e-mail são interceptadas.
 
 **Navegador autenticado:** `tests/app.spec.ts` exige `E2E_EMAIL` e `E2E_PASSWORD` definidos localmente. Use uma conta confirmada de um **projeto dedicado a testes**, com estas migrações, e gere o build com URL/chave desse mesmo projeto. Esses testes gravam lançamentos e categorias de teste, verificam persistência, edição, CSV, exclusão e logout. Sem as variáveis, ficam explicitamente ignorados. Se um teste falhar antes da limpeza, registros identificados como teste podem permanecer.
 
+Para executar somente os testes autenticados, crie `.env.e2e.local` na raiz (já ignorado pelo Git), preenchendo `E2E_EMAIL` e `E2E_PASSWORD` com essa conta. Não use o prefixo `NEXT_PUBLIC_` para credenciais. O Playwright não lê esse arquivo automaticamente; execute:
+
+```powershell
+npm run build
+node --env-file=.env.e2e.local ./node_modules/@playwright/test/cli.js test tests/app.spec.ts --workers=1 --trace=off
+```
+
+O worker único evita interferência entre testes da mesma conta. O build precisa usar o mesmo projeto de `.env.local`. O trace é desativado nessa execução para evitar gravar tokens e credenciais em um arquivo de diagnóstico de rede.
 **RLS remoto e concorrência:** `scripts/rls-remote.test.mjs` usa dois logins reais via Auth e a chave publicável. Não usa SQL Editor administrativo, service_role ou criação de contas administrativa. Testa leitura, inserção, alteração, exclusão, mudança de proprietário, IDs/categorias/recorrências alheios, RPCs de visitante e seis requisições HTTP concorrentes de geração.
 
 Para habilitar esse teste, crie duas contas confirmadas no projeto dedicado a testes e configure localmente, sem enviar credenciais pelo chat, um arquivo ignorado pelo Git chamado `.env.rls.local`:
@@ -142,6 +163,9 @@ Ou use `npm run test:rls:remote` quando essas variáveis já estiverem no ambien
 12. Filtre o histórico e abra o CSV no Excel. Teste uma descrição iniciada por `=1+1`: deve permanecer texto.
 13. Execute o teste remoto de duas contas. Uma resposta vazia em SELECT/UPDATE/DELETE de ID alheio é um bloqueio válido do RLS; não basta observar que o botão não aparece.
 14. Confira desktop e celular e simule falha de rede: a interface deve mostrar erro, sem substituir consultas por zeros ou exemplos.
+15. Cadastre renda recorrente com dia de recebimento anterior ou igual a hoje e consulte o mês: deve aparecer realizada. Uma renda do mês seguinte deve permanecer prevista. Recarregue e confirme que o ID e a quantidade de ocorrências não mudam.
+16. Corrija uma dessas receitas para prevista no histórico e recarregue: a escolha manual deve permanecer. Confira que despesas vencidas continuam previstas até confirmar o pagamento.
+17. Alterne sol/lua, navegue e recarregue. Verifique contraste, campos, espaçamento e ausência de rolagem horizontal indevida nos dois temas.
 
 ## Pendências externas
 

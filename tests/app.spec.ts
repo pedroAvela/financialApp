@@ -1,14 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
+// These scenarios perform several sequential round trips to the remote test database.
+test.setTimeout(90000);
+test.use({ actionTimeout: 10000 });
+
 test.beforeEach(async ({ page }) => {
   test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD, "Exige migrações aplicadas e conta confirmada de um projeto de testes.");
   await page.goto("/login");
   await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_EMAIL!);
   await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_PASSWORD!);
+  const loginResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/auth/v1/token", { timeout: 20000 });
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole("heading", { name: /Tudo sob controle/ })).toBeVisible();
+  expect((await loginResponse).status(), "Supabase deve aceitar o login da conta de teste").toBe(200);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 20000 });
+  await expect(page.getByRole("heading", { name: /Tudo sob controle/ })).toBeVisible({ timeout: 20000 });
 });
 async function write(page: Page, action: string, data: object) {
   const result = await page.request.post("/api/finance", { headers: { Origin: "http://127.0.0.1:3100" }, data: { action, data } });
@@ -28,9 +34,9 @@ test("lançamento persiste, pode ser editado, exportado e excluído com confirma
   await write(page, "category.save", { id, name: label, color: "#137968", type: "expense" });
   try {
     await page.goto("/lancamento");
-    await page.getByLabel("Valor (R$)", { exact: true }).fill("123,45");
+    await page.getByRole("textbox", { name: /^Valor \(R\$\)/ }).fill("123,45");
     await page.getByLabel("Descrição (opcional)", { exact: true }).fill(label);
-    await page.getByLabel("Categoria", { exact: true }).selectOption(id);
+    await page.getByRole("combobox", { name: "Categoria", exact: true }).selectOption(id);
     await page.getByLabel("Data", { exact: true }).fill("2098-07-10");
     await page.getByRole("button", { name: "Salvar despesa", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Lançamento registrado!" })).toBeVisible();
@@ -43,7 +49,7 @@ test("lançamento persiste, pode ser editado, exportado e excluído com confirma
     await page.getByLabel("Buscar movimentações").fill(label);
     await expect(page.locator("tbody")).toContainText("123,45");
     await page.getByRole("button", { name: "Editar " + label, exact: true }).click();
-    await page.getByLabel("Valor (R$)", { exact: true }).fill("150,00");
+    await page.getByRole("textbox", { name: /^Valor \(R\$\)/ }).fill("150,00");
     await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
     await expect(page.locator("tbody")).toContainText("150,00");
     const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Exportar CSV" }).click()]);

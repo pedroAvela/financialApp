@@ -12,6 +12,7 @@ test("migrações, isolamento RLS e recorrências em PostgreSQL local", async (t
     await db.query("select set_config('request.jwt.claims',$1,false)", [JSON.stringify({ sub: id, user_metadata: { name: "Teste" } })]);
   }
   async function rows(sql, params = []) { return (await db.query(sql, params)).rows; }
+  let legacyRule;
   try {
     await db.exec(`create role anon nologin; create role authenticated nologin;
       create schema auth;
@@ -21,6 +22,15 @@ test("migrações, isolamento RLS e recorrências em PostgreSQL local", async (t
       grant usage on schema auth,public to anon,authenticated;
       insert into auth.users(id) values ('${a}');`);
     for (const file of ["202609100001_financial_schema.sql", "202609100002_financial_functions.sql", "202609100003_income_by_date.sql"]) {
+      if (file === "202609100003_income_by_date.sql") {
+        await asUser(a);
+        const category = (await rows("select id from public.categories where type='income' limit 1"))[0].id;
+        legacyRule = (await rows("insert into public.recurrences(category_id,type,amount,day_of_month,start_month,effective_month) values($1,'income',500,5,'2001-09-01',date_trunc('month',now())::date) returning id", [category]))[0].id;
+        for (const m of ["2001-09-01", "2001-10-01", "2001-11-01"]) await db.query("select public.generate_occurrences($1)", [m]);
+        await db.query("update public.transactions set status='realized' where recurrence_id=$1 and occurrence_month='2001-10-01'", [legacyRule]);
+        await db.query("update public.transactions set deleted_at=now() where recurrence_id=$1 and occurrence_month='2001-11-01'", [legacyRule]);
+        await db.exec("reset role");
+      }
       await db.exec(await readFile(new URL("../supabase/migrations/" + file, import.meta.url), "utf8"));
     }
     await db.query("insert into auth.users(id) values ($1)", [b]);
@@ -42,6 +52,22 @@ test("migrações, isolamento RLS e recorrências em PostgreSQL local", async (t
       await asUser(b);
       assert.equal((await rows("select * from public.categories")).length, 8);
       await asUser(a);
+    });
+    await t.test("migração incremental adapta previsões antigas sem alterar realizados ou exclusões", async () => {
+      const before = await rows("select * from public.transactions where recurrence_id=$1 order by occurrence_month", [legacyRule]);
+      assert.equal(before.length, 3);
+      assert.deepEqual(before.map((r) => r.auto_realize), [true, false, false]);
+      assert.deepEqual(before.map((r) => r.status), ["planned", "realized", "planned"]);
+      await asUser(b);
+      await db.exec("select public.generate_occurrences('2001-09-01')");
+      assert.equal((await rows("select * from public.transactions where recurrence_id=$1", [legacyRule])).length, 0);
+      await asUser(a);
+      assert.equal((await rows("select status from public.transactions where id=$1", [before[0].id]))[0].status, "planned");
+      for (let i=0;i<2;i++) await db.exec("select public.generate_occurrences('2001-09-01')");
+      const after = await rows("select * from public.transactions where recurrence_id=$1 order by occurrence_month", [legacyRule]);
+      assert.deepEqual(after.map((r) => r.id), before.map((r) => r.id));
+      assert.deepEqual(after.map((r) => r.status), ["realized", "realized", "planned"]);
+      assert.deepEqual(after[2].deleted_at, before[2].deleted_at);
     });
     await t.test("receitas recorrentes usam a data do perfil e preservam ajuste manual", async () => {
       const dates = (await rows("select (now() at time zone 'Pacific/Kiritimati')::date::text as ahead, (now() at time zone 'Etc/GMT+12')::date::text as behind"))[0];
