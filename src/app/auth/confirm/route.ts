@@ -1,30 +1,35 @@
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getSupabaseConfig } from "@/lib/supabase/config";
 import { safeNext } from "@/lib/auth";
+import { confirmEmail, confirmationFailure } from "@/lib/auth-confirm";
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
-  const type = params.get("type");
-  const tokenHash = params.get("token_hash");
-  const code = params.get("code");
-  const next = safeNext(params.get("next"));
-  const recovery = type === "recovery" || next === "/redefinir-senha";
-  let destination = `${recovery ? "/recuperar-senha" : "/login"}?error=link_invalido`;
-
-  try {
-    const supabase = await createClient();
-    if (tokenHash && (type === "signup" || type === "recovery")) {
-      const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type });
-      if (!error) destination = type === "recovery" ? "/redefinir-senha" : safeNext(params.get("next"), "/configuracao-inicial");
-    } else if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (!error) destination = next;
-    }
-  } catch {
-    // Never include tokens or raw provider errors in redirects or logs.
-  }
-  const response = NextResponse.redirect(new URL(destination, request.url));
+  const next = safeNext(params.get("next"), "/configuracao-inicial");
+  const recovery = params.get("type") === "recovery" || next === "/redefinir-senha";
+  // Keep the browser's host: NextURL normalizes 127.0.0.1 to localhost.
+  const origin = `${request.nextUrl.protocol}//${request.headers.get("host") ?? request.nextUrl.host}`;
+  const response = NextResponse.redirect(new URL("/login", origin));
   response.headers.set("Cache-Control", "private, no-store");
   response.headers.set("Referrer-Policy", "no-referrer");
+  let destination: string;
+  if (!params.has("token_hash") && !params.has("code") && !params.has("error") && !params.has("error_code")) {
+    // URL fragments never reach the server. The browser carries the fragment
+    // through this redirect and the landing page validates it before navigating.
+    destination = `/confirmar-email?next=${encodeURIComponent(next)}${recovery ? "&recovery=1" : ""}`;
+  } else {
+    try {
+      const { url, key } = getSupabaseConfig();
+      const supabase = createServerClient(url, key, {
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll: (cookies) => cookies.forEach(({ name, value, options }) => response.cookies.set(name, value, options)),
+        },
+      });
+      destination = await confirmEmail(params, supabase.auth);
+    } catch (error) { destination = confirmationFailure(error, recovery); }
+  }
+  response.headers.set("Location", new URL(destination, origin).toString());
   return response;
 }

@@ -14,14 +14,18 @@ test("migrações, isolamento RLS e recorrências em PostgreSQL local", async (t
   async function rows(sql, params = []) { return (await db.query(sql, params)).rows; }
   let legacyRule;
   try {
-    await db.exec(`create role anon nologin; create role authenticated nologin;
+    await db.exec(`create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
       create schema auth;
+      create schema storage;
+      create table storage.objects(bucket_id text, name text, owner_id text, owner uuid);
+      grant usage on schema storage, public to service_role;
+      grant select on storage.objects to service_role;
       create table auth.users(id uuid primary key,raw_user_meta_data jsonb default '{}');
       create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
       create function auth.jwt() returns jsonb language sql stable as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
       grant usage on schema auth,public to anon,authenticated;
       insert into auth.users(id) values ('${a}');`);
-    for (const file of ["202609100001_financial_schema.sql", "202609100002_financial_functions.sql", "202609100003_income_by_date.sql"]) {
+    for (const file of ["202609100001_financial_schema.sql", "202609100002_financial_functions.sql", "202609100003_income_by_date.sql", "202609140004_account_deletion.sql"]) {
       if (file === "202609100003_income_by_date.sql") {
         await asUser(a);
         const category = (await rows("select id from public.categories where type='income' limit 1"))[0].id;
@@ -30,6 +34,12 @@ test("migrações, isolamento RLS e recorrências em PostgreSQL local", async (t
         await db.query("update public.transactions set status='realized' where recurrence_id=$1 and occurrence_month='2001-10-01'", [legacyRule]);
         await db.query("update public.transactions set deleted_at=now() where recurrence_id=$1 and occurrence_month='2001-11-01'", [legacyRule]);
         await db.exec("reset role");
+      }
+      if (file === "202609140004_account_deletion.sql") {
+        // Nome arbitrário e ação antiga: a migração deve inspecionar o catálogo.
+        const fk = (await rows("select conname from pg_constraint where conrelid='public.profiles'::regclass and confrelid='auth.users'::regclass"))[0].conname;
+        await db.exec(`alter table public.profiles drop constraint "${fk.replaceAll('"', '""')}";
+          alter table public.profiles add constraint custom_owner_reference foreign key(user_id) references auth.users(id);`);
       }
       await db.exec(await readFile(new URL("../supabase/migrations/" + file, import.meta.url), "utf8"));
     }
@@ -214,6 +224,73 @@ test("migrações, isolamento RLS e recorrências em PostgreSQL local", async (t
       assert.equal(Number((await rows("select amount from public.budgets where id=$1", [budget]))[0].amount), 600);
       assert.equal((await rows("delete from public.transactions where id=$1 returning id", [tx])).length, 1);
       assert.equal((await rows("delete from public.budgets where id=$1 returning id", [budget])).length, 1);
+    });
+    await t.test("migração de exclusão preserva dados, mantém RLS e encontra nomes de FK pelo catálogo", async () => {
+      await db.exec("reset role");
+      const tables = ["profiles", "categories", "transactions", "recurrences", "budgets"];
+      const before = {};
+      for (const table of tables) before[table] = (await rows(`select count(*)::int as n from public.${table}`))[0].n;
+      await db.exec(await readFile(new URL("../supabase/migrations/202609140004_account_deletion.sql", import.meta.url), "utf8"));
+      for (const table of tables) {
+        assert.equal((await rows(`select count(*)::int as n from public.${table}`))[0].n, before[table]);
+        assert.equal((await rows("select relrowsecurity from pg_class where oid=$1::regclass", [`public.${table}`]))[0].relrowsecurity, true);
+        const fks = await rows("select confdeltype, convalidated from pg_constraint where conrelid=$1::regclass and confrelid='auth.users'::regclass and contype='f'", [`public.${table}`]);
+        assert.ok(fks.length > 0);
+        assert.ok(fks.every((fk) => fk.confdeltype === "c" && fk.convalidated));
+      }
+      assert.equal((await rows("select confdeltype from pg_constraint where conname='custom_owner_reference'"))[0].confdeltype, "c");
+      await asUser(a);
+    });
+    await t.test("tabela extra de convites sem user_id exige revisão e não é apagada", async () => {
+      await db.exec("reset role; create table public.invitations(email text, sender uuid references auth.users(id))");
+      await db.query("insert into public.invitations values('convite@example.com',$1)", [a]);
+      await assert.rejects(db.exec(await readFile(new URL("../supabase/migrations/202609140004_account_deletion.sql", import.meta.url), "utf8")), /Revise a propriedade/);
+      await db.exec("rollback");
+      assert.equal((await rows("select * from public.invitations")).length, 1);
+      await db.exec("drop table public.invitations");
+      await asUser(a);
+    });
+    await t.test("inventário Storage é exclusivo do serviço e usa proprietário, não nomes de pastas", async () => {
+      await db.exec("reset role");
+      await db.query("insert into storage.objects values ('files','nested/a.pdf',$1,null),('files','legacy.pdf',null,$1::uuid),('files',$1 || '/foreign.pdf',$2,null),('files','without-owner.pdf',null,null),('avatars','current-owner.png',$2,$1::uuid)", [a, b]);
+      for (const role of ["anon", "authenticated"]) {
+        await db.exec(`reset role; set role ${role}`);
+        await assert.rejects(db.query("select * from public.account_owned_storage_objects($1)", [a]));
+        await assert.rejects(db.query("delete from auth.users where id=$1", [b]));
+      }
+      await db.exec("reset role; set role service_role");
+      assert.deepEqual((await rows("select * from public.account_owned_storage_objects($1)", [a])).map((r) => r.name), ["legacy.pdf", "nested/a.pdf"]);
+      assert.equal((await rows("select * from public.account_owned_storage_objects($1)", [b])).length, 2);
+      await db.exec("reset role");
+      assert.equal((await rows("select * from storage.objects")).length, 5); // Função somente leitura.
+      await asUser(a);
+    });
+    await t.test("excluir usuário no Auth remove todos os dados próprios por cascade e preserva conta B", async () => {
+      await asUser(b);
+      const otherIncome = (await rows("select id from public.categories where type='income' limit 1"))[0].id;
+      await db.query("select public.save_initial_setup($1,2000,300,700,$2,$3,15)", [month, otherIncome, cb]);
+      await db.exec("reset role");
+      const tables = ["profiles", "categories", "transactions", "recurrences", "budgets"];
+      const otherBefore = {};
+      for (const table of tables) {
+        assert.ok((await rows(`select count(*)::int as n from public.${table} where user_id=$1`, [a]))[0].n > 0, table);
+        otherBefore[table] = await rows(`select * from public.${table} where user_id=$1 order by ${table === "profiles" ? "user_id" : "id"}`, [b]);
+        assert.ok(otherBefore[table].length > 0, `Conta B também tem dados em ${table}`);
+      }
+      // Simula apenas o efeito SQL do Auth administrativo; não é teste RLS.
+      // Storage real é removido pela API antes, testada com falhas em account-deletion.spec.ts.
+      await db.query("delete from auth.users where id=$1", [a]);
+      assert.equal((await rows("select * from auth.users where id=$1", [a])).length, 0);
+      assert.equal((await rows("select * from auth.users where id=$1", [b])).length, 1);
+      for (const table of tables) {
+        assert.equal((await rows(`select * from public.${table} where user_id=$1`, [a])).length, 0, table);
+        assert.deepEqual(await rows(`select * from public.${table} where user_id=$1 order by ${table === "profiles" ? "user_id" : "id"}`, [b]), otherBefore[table]);
+      }
+      // Mesmo um JWT antigo com sub=A não pode recriar o perfil após a exclusão.
+      await asUser(a);
+      for (const table of tables) assert.equal((await rows(`select * from public.${table}`)).length, 0);
+      await assert.rejects(db.exec("select public.initialize_finance()"));
+      await assert.rejects(db.exec("insert into public.profiles(name) values('Tentativa de recriar')"));
     });
   } finally { await db.close(); }
 });

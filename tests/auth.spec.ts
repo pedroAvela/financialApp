@@ -14,6 +14,21 @@ test("API financeira exige sessão e rejeita gravações de outra origem", async
   expect(post.status()).toBe(403);
 });
 
+test("exclusão e exportação de conta exigem autenticação e origem válida", async ({ request }) => {
+  const anonymous = await request.post("/api/account/delete", { headers: { Origin: "http://127.0.0.1:3100" }, data: { confirmation: "EXCLUIR", password: "senha-de-teste" } });
+  expect(anonymous.status()).toBe(401);
+  expect(anonymous.headers()["cache-control"]).toContain("no-store");
+  const foreign = await request.post("/api/account/delete", { headers: { Origin: "https://outro.example" }, data: { confirmation: "EXCLUIR", password: "senha-de-teste" } });
+  expect(foreign.status()).toBe(403);
+  expect((await request.get("/api/account/export")).status()).toBe(401);
+  expect((await request.get("/api/account/delete")).status()).toBe(405);
+});
+
+test("login informa a conclusão da exclusão definitiva", async ({ page }) => {
+  await page.goto("/login?notice=conta_excluida");
+  await expect(page.getByRole("status")).toContainText("Sua conta foi excluída definitivamente.");
+});
+
 test("rotas internas redirecionam visitantes e preservam o destino", async ({ page }) => {
   for (const path of ["/dashboard", "/historico?mes=2026-09", "/lancamento", "/planejamento", "/configuracoes", "/configuracao-inicial"]) {
     await page.goto(path);
@@ -124,4 +139,48 @@ test("tema acompanha o sistema e a escolha manual persiste", async ({ page }, te
   await expect(page.getByRole("button", { name: "Ativar modo claro" })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("cadastro-dark.png"), fullPage: true });
   expect(errors).toEqual([]);
+});
+
+test("callback mantém a origem local e orienta login quando falta o verificador PKCE", async ({ page, request }) => {
+  const response = await request.get("/auth/confirm?next=/configuracao-inicial", { maxRedirects: 0 });
+  expect(response.headers().location).toBe("http://127.0.0.1:3100/confirmar-email?next=%2Fconfiguracao-inicial");
+  expect(response.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(response.headers()["cache-control"]).toContain("no-store");
+  await page.goto("/auth/confirm?code=test-code-without-verifier");
+  await expect(page).toHaveURL(/\/login\?notice=confirmacao_sem_sessao$/);
+  await expect(page.getByRole("status")).toContainText("Se o seu e-mail já foi confirmado");
+  await expect(page.locator("form").getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Entrar", exact: true })).toBeEnabled();
+});
+
+for (const type of ["signup", "recovery"]) {
+  test(`callback recupera sessão do fragmento para ${type} antes de navegar`, async ({ page, context }) => {
+    const destination = type === "recovery" ? "/redefinir-senha" : "/configuracao-inicial";
+    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+    const token = `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ sub: "11111111-1111-4111-8111-111111111111", exp: Math.floor(Date.now() / 1000) + 3600 })}.test-signature`;
+    let validations = 0;
+    await page.route("**/auth/v1/user", async (route) => {
+      validations++;
+      expect(route.request().headers().authorization).toBe(`Bearer ${token}`);
+      expect(new URL(page.url()).hash).toBe("");
+      await route.fulfill({ json: { id: "11111111-1111-4111-8111-111111111111", aud: "authenticated", role: "authenticated", email_confirmed_at: "2026-01-01T00:00:00Z", app_metadata: {}, user_metadata: {} } });
+    });
+    // This destination is a test stub; no fake token reaches the real protected server.
+    await page.route(`http://127.0.0.1:3100${destination}`, (route) => route.fulfill({ contentType: "text/html", body: "<h1>Destino validado</h1>" }));
+    await page.goto(`/auth/confirm?next=${destination}#access_token=${token}&refresh_token=test-refresh&type=${type}`);
+    await expect(page).toHaveURL(`http://127.0.0.1:3100${destination}`);
+    await expect(page.getByRole("heading", { name: "Destino validado" })).toBeVisible();
+    expect(validations).toBeGreaterThanOrEqual(1);
+    expect((await context.cookies()).some((cookie) => cookie.name.startsWith("sb-") && cookie.name.includes("auth-token"))).toBe(true);
+  });
+}
+
+test("erro no fragmento permanece erro e não libera sessão", async ({ page }) => {
+  await page.goto("/auth/confirm#error=access_denied&error_code=otp_expired&type=signup");
+  await expect(page).toHaveURL(/\/login\?error=link_invalido$/);
+  await expect(page.locator("form").getByRole("alert")).toContainText("já ter sido utilizado");
+  await page.goto("/auth/confirm#error=server_error&error_description=test-secret");
+  await expect(page).toHaveURL(/\/login\?error=confirmacao_falhou$/);
+  await expect(page.locator("form").getByRole("alert")).toContainText("Não foi possível concluir");
+  await expect(page.locator("body")).not.toContainText("test-secret");
 });

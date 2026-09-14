@@ -30,7 +30,7 @@ Se não houver tabelas financeiras, execute uma vez, no SQL Editor do projeto co
 
 Cada arquivo usa uma transação. A primeira cria tabelas, índices, constraints, grants, RLS e validações. A segunda cria as funções, o trigger de novos usuários e preenche perfis/categorias de usuários existentes. Os nomes versionados também permitem usar o fluxo normal de migrações da CLI; a aplicação não executa esse fluxo automaticamente.
 
-A estrutura usa PostgreSQL 15+ (`UNIQUE NULLS NOT DISTINCT`), compatível com os projetos Supabase atuais. Não crie uma tabela de senhas e não utilize uma chave administrativa na aplicação.
+A estrutura usa PostgreSQL 15+ (`UNIQUE NULLS NOT DISTINCT`), compatível com os projetos Supabase atuais. Não crie uma tabela de senhas. As operações financeiras nunca usam chave administrativa; a exceção isolada no servidor é a [exclusão definitiva da própria conta](account-deletion.md), após reautenticação.
 
 ## Estrutura e segurança
 
@@ -44,7 +44,7 @@ Todas as tabelas habilitam RLS. Visitantes não têm grants de dados. Usuários 
 
 Grants e políticas são complementados por triggers que tornam proprietário/identidade imutáveis e por chaves estrangeiras compostas que incluem o usuário e o tipo. Isso bloqueia associações a categorias e recorrências alheias mesmo por requisição direta. Alterar o tipo de uma categoria ou regra existente é recusado; crie outra quando necessário.
 
-A API valida a sessão com `auth.getUser()`, deriva o usuário da sessão e aceita apenas campos conhecidos. Um `user_id` enviado pelo formulário não é utilizado. As operações normais e RPCs usam `SECURITY INVOKER` e o contexto autenticado. Não há `service_role` nem views/agregações administrativas. As consultas são paginadas em blocos de 500 para não truncar silenciosamente o histórico no limite padrão da API.
+A API valida a sessão com `auth.getUser()`, deriva o usuário da sessão e aceita apenas campos conhecidos. Um `user_id` enviado pelo formulário não é utilizado. As operações normais e RPCs usam `SECURITY INVOKER` e o contexto autenticado. Não há `service_role` nas operações financeiras nem views/agregações administrativas. O cliente administrativo separado atende somente à exclusão definitiva da própria conta e à remoção prévia de seus arquivos. As consultas são paginadas em blocos de 500 para não truncar silenciosamente o histórico no limite padrão da API.
 
 A única função `SECURITY DEFINER` é o trigger de inicialização de novos usuários do Auth: usa exclusivamente `NEW.id`, tem `search_path` fixado e não possui EXECUTE público. O preenchimento de usuários existentes é feito na migração. A RPC `initialize_finance()`, sujeita a RLS, permite repetir a inicialização sem duplicar nem sobrescrever preferências ou reativar categorias arquivadas.
 

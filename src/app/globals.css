@@ -374,3 +374,11 @@ fieldset { border: 0; padding: 0; min-width: 0; }
 [data-theme="dark"] .story-orbit { border-color: #4b6c4e66; box-shadow: 0 0 0 60px #314d3a55, 0 0 0 120px #314d3a33; }
 [data-theme="dark"] .mini-bars i, [data-theme="dark"] .decorative-bars i { background: #82b484; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; } }
+
+.account-danger-zone { border-color: #c64b4b; }
+.account-danger-zone .button { white-space: normal; max-width: 100%; text-align: center; }
+.account-danger-zone h2 { color: #a92525; }
+.button.account-delete-button { background: #a92525; color: #fff; border: 1px solid #a92525; }
+.button.account-delete-button:hover:not(:disabled) { background: #881e1e; }
+[data-theme="dark"] .account-danger-zone h2 { color: #ffaaa5; }
+[data-theme="dark"] .account-danger-zone { border-color: #c46c68; }

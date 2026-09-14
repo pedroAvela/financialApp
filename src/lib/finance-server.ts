@@ -32,6 +32,16 @@ async function allRows(client: SupabaseClient, table: string, userId: string, co
     if (data.length < 500) return rows;
   }
 }
+/** Todos os períodos e registros próprios, incluindo arquivados e ocorrências ocultas. */
+export async function exportOwnFinance(client: SupabaseClient, userId: string) {
+  const profile = await client.from("profiles").select("*").eq("user_id", userId).maybeSingle();
+  dbError(profile.error);
+  const [categories, transactions, recurrences, budgets] = await Promise.all([
+    allRows(client, "categories", userId), allRows(client, "transactions", userId),
+    allRows(client, "recurrences", userId), allRows(client, "budgets", userId),
+  ]);
+  return { profile: profile.data, categories, transactions, recurrences, budgets };
+}
 export async function snapshot(client: SupabaseClient, userId: string, requestedMonth: string | null): Promise<FinanceSnapshot> {
   dbError((await client.rpc("initialize_finance")).error);
   const profileResult = await client.from("profiles").select("*").eq("user_id", userId).single();

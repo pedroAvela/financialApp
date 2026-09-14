@@ -44,12 +44,14 @@ test("RLS remoto: duas contas, visitante e geração concorrente", { skip: enabl
       ["budgets", { category_id: ca, month, amount: 1 }],
       ["recurrences", { category_id: ca, type: "expense", amount: 1, expense_kind: "fixed", day_of_month: 1, start_month: month, effective_month: month }],
     ];
+    const testIds = { profiles: ua, categories: ca, transactions: tx, budgets: budget, recurrences: rule };
     for (const [table, row] of foreignRows) {
+      const idColumn = table === "profiles" ? "user_id" : "id";
       denied(await b.from(table).insert(row).select("*"));
-      denied(await anon.from(table).select("*"));
+      denied(await anon.from(table).select("*").eq(idColumn, testIds[table]));
       denied(await anon.from(table).insert(row).select("*"));
-      denied(await anon.from(table).update({ user_id: ua }).select("*"));
-      denied(await anon.from(table).delete().select("*"));
+      denied(await anon.from(table).update({ user_id: ua }).eq(idColumn, testIds[table]).select("*"));
+      denied(await anon.from(table).delete().eq(idColumn, testIds[table]).select("*"));
     }
     denied(await a.from("transactions").update({ category_id: cb }).eq("id", tx).select("id"));
     denied(await a.from("budgets").update({ category_id: cb }).eq("id", budget).select("id"));

@@ -6,9 +6,9 @@ import { Icon } from "@/components/icon";
 import { createClient } from "@/lib/supabase/client";
 import { authErrorMessage, safeNext } from "@/lib/auth";
 
-export function AuthForm({ signup = false, next, invalidLink = false }: { signup?: boolean; next?: string; invalidLink?: boolean }) {
-  const [error, setError] = useState(invalidLink ? "Este link é inválido ou expirou. Tente entrar ou solicite um novo link de recuperação." : "");
-  const [message, setMessage] = useState("");
+export function AuthForm({ signup = false, next, invalidLink = false, confirmationError = false, confirmationNotice }: { signup?: boolean; next?: string; invalidLink?: boolean; confirmationError?: boolean; confirmationNotice?: string }) {
+  const [error, setError] = useState(invalidLink ? "Este link é inválido ou expirou. Ele também pode já ter sido utilizado. Se o e-mail já foi confirmado, entre com sua senha." : confirmationError ? "Não foi possível concluir o acesso pelo link. Verifique sua conexão e tente novamente. Se já confirmou o e-mail, entre com sua senha." : "");
+  const [message, setMessage] = useState(confirmationNotice === "conta_excluida" ? "Sua conta foi excluída definitivamente." : confirmationNotice === "email_confirmado" ? "E-mail confirmado. Entre com sua senha para continuar." : confirmationNotice === "confirmacao_sem_sessao" ? "Não foi possível iniciar a sessão neste navegador. Se o seu e-mail já foi confirmado, entre com sua senha. Você também pode abrir o link no navegador em que fez o cadastro." : "");
   const [loading, setLoading] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

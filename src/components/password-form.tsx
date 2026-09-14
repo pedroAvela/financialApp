@@ -6,9 +6,9 @@ import { Icon } from "@/components/icon";
 import { createClient } from "@/lib/supabase/client";
 import { authErrorMessage } from "@/lib/auth";
 
-export function PasswordForm({ reset = false, invalidLink = false }: { reset?: boolean; invalidLink?: boolean }) {
+export function PasswordForm({ reset = false, invalidLink = false, callbackError }: { reset?: boolean; invalidLink?: boolean; callbackError?: string }) {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(invalidLink ? "Este link é inválido ou expirou. Solicite um novo link abaixo." : "");
+  const [error, setError] = useState(invalidLink ? "Este link é inválido ou expirou. Solicite um novo link abaixo." : callbackError === "confirmacao_sem_sessao" ? "Não foi possível iniciar a sessão de recuperação. Abra o link no navegador em que fez a solicitação ou solicite outro link abaixo." : callbackError === "confirmacao_falhou" ? "Não foi possível concluir a recuperação pelo link. Verifique sua conexão e tente novamente." : "");
   const [message, setMessage] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
