@@ -5,6 +5,7 @@ import { FinanceGate, useFinance } from "./finance-provider";
 import { TransactionList } from "./transaction-list";
 import { PageHeading } from "./ui";
 import { Icon } from "./icon";
+import { InstallmentsManager } from "./installment-details";
 import { currency, filterTransactions, monthBounds, monthLabel, summarize, transactionsCsv } from "@/lib/finance";
 export function History() { return <FinanceGate><HistoryContent /></FinanceGate>; }
 function HistoryContent() {
@@ -31,5 +32,5 @@ function HistoryContent() {
       <select aria-label="Filtrar por categoria" value={category} onChange={(e) => setCategory(e.target.value)}><option value="all">Todas as categorias</option>{data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}{!c.active ? " (arquivada)" : ""}</option>)}</select>
       <select aria-label="Filtrar por situação" value={status} onChange={(e) => setStatus(e.target.value)}><option value="all">Todas as situações</option><option value="realized">Realizadas</option><option value="planned">Previstas</option></select>
       <label className="field">De<input aria-label="Data inicial do filtro" type="date" value={from} min={monthBounds(month).start} max={monthBounds(month).end} onChange={(e) => setFrom(e.target.value)} /></label><label className="field">Até<input aria-label="Data final do filtro" type="date" value={to} min={from || monthBounds(month).start} max={monthBounds(month).end} onChange={(e) => setTo(e.target.value)} /></label>
-      <button className="button secondary" onClick={download}>Exportar CSV</button></div><div className="results-label" role="status">{filtered.length} movimentações encontradas. O CSV usa estes mesmos filtros.</div>{from && to && from > to && <p className="error-message" role="alert">O início deve ser anterior ao fim do período.</p>}<TransactionList transactions={filtered} editable /></section></>;
+      <button className="button secondary" onClick={download}>Exportar CSV</button></div><div className="results-label" role="status">{filtered.length} movimentações encontradas. O CSV usa estes mesmos filtros. Parcelas pagas aparecem no mês do pagamento; previstas, no mês do vencimento.</div>{from && to && from > to && <p className="error-message" role="alert">O início deve ser anterior ao fim do período.</p>}<TransactionList transactions={filtered} editable /></section><InstallmentsManager /></>;
 }

@@ -1,4 +1,5 @@
 import { MAX_CENTS, moneyToCents, validDate, validMonth } from "./finance";
+import { installmentSchedule } from "./installments";
 export class ValidationError extends Error {}
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ValidationError("Dados inválidos.");
@@ -37,4 +38,17 @@ export function transactionInput(input: Record<string, unknown>) {
   if (!validDate(date)) throw new ValidationError("Informe uma data válida.");
   return { type, amount: money(input.amount)!, description: text(input.description ?? "", "uma descrição"), category_id: uuid(input.category_id), date,
     status: choice(input.status, ["planned", "realized"]), expense_kind: type === "expense" ? choice(input.expense_kind, ["fixed", "variable"]) : null };
+}
+
+export function installmentInput(input: Record<string, unknown>) {
+  const total = money(input.total_amount)!;
+  const count = typeof input.installment_count === "string" && /^\d+$/.test(input.installment_count) ? Number(input.installment_count) : input.installment_count;
+  if (typeof count !== "number" || !Number.isInteger(count)) throw new ValidationError("Informe uma quantidade inteira de parcelas.");
+  const purchase = text(input.purchase_date, "uma data de compra", 10, true);
+  const firstDue = text(input.first_due_date, "o primeiro vencimento", 10, true);
+  if (!validDate(purchase) || !validDate(firstDue) || firstDue < purchase) throw new ValidationError("O primeiro vencimento deve ser igual ou posterior à data da compra.");
+  try { installmentSchedule(total, count, firstDue); } catch (error) { throw new ValidationError(error instanceof Error ? error.message : "Parcelamento inválido."); }
+  return { p_category: uuid(input.category_id), p_description: text(input.description, "uma descrição da compra", 200, true), p_total: total, p_count: count,
+    p_purchase: purchase, p_first_due: firstDue, p_method: text(input.payment_method ?? "", "uma forma de pagamento", 60) || null,
+    p_kind: choice(input.expense_kind, ["fixed", "variable"]) };
 }

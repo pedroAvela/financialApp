@@ -38,7 +38,7 @@ export function budgetUsage(spent: number, limit: number | null) {
   return { percent, alert, available: limit === null ? null : limit - spent };
 }
 export function summarize(transactions: Transaction[], budgets: Budget[], month: string) {
-  const monthly = transactions.filter((item) => item.date.slice(0, 7) === month);
+  const monthly = transactions.filter((item) => !item.deleted_at && item.date.slice(0, 7) === month);
   const sum = (type: string, status: string) => monthly.filter((t) => t.type === type && t.status === status).reduce((total, t) => total + t.amount, 0);
   const income = sum("income", "realized"), expenses = sum("expense", "realized");
   const variableExpenses = monthly.filter((t) => t.type === "expense" && t.status === "realized" && t.expense_kind === "variable").reduce((s, t) => s + t.amount, 0);
@@ -47,7 +47,7 @@ export function summarize(transactions: Transaction[], budgets: Budget[], month:
 }
 export interface TransactionFilters { search: string; type: string; category: string; status: string; from: string; to: string }
 export function filterTransactions(transactions: Transaction[], filters: TransactionFilters) {
-  return transactions.filter((t) => t.description.toLocaleLowerCase("pt-BR").includes(filters.search.toLocaleLowerCase("pt-BR")) &&
+  return transactions.filter((t) => !t.deleted_at && t.description.toLocaleLowerCase("pt-BR").includes(filters.search.toLocaleLowerCase("pt-BR")) &&
     (filters.type === "all" || t.type === filters.type) && (filters.category === "all" || t.category_id === filters.category) &&
     (filters.status === "all" || t.status === filters.status) && (!filters.from || t.date >= filters.from) && (!filters.to || t.date <= filters.to));
 }
@@ -56,9 +56,12 @@ export function csvCell(value: string) {
   return '"' + safe.replace(/"/g, '""') + '"';
 }
 export function transactionsCsv(transactions: Transaction[], categories: Category[]) {
-  const rows = [["Data", "Tipo", "Situação", "Classificação", "Categoria", "Descrição", "Valor (R$)"], ...transactions.map((t) => [
-    t.date.split("-").reverse().join("/"), t.type === "income" ? "Receita" : "Despesa", t.status === "realized" ? "Realizada" : "Prevista",
-    t.expense_kind === "fixed" ? "Fixa" : t.expense_kind === "variable" ? "Variável" : "", categories.find((c) => c.id === t.category_id)?.name ?? "", t.description, inputMoney(t.amount),
+  const rows = [["Data", "Tipo", "Situação", "Classificação", "Categoria", "Descrição", "Descrição da compra", "Parcela", "Total de parcelas", "Vencimento", "Data de pagamento", "Valor previsto (R$)", "Valor (R$)"], ...transactions.map((t) => [
+    t.date.split("-").reverse().join("/"), t.type === "income" ? "Receita" : "Despesa", t.deleted_at ? "Cancelada" : t.status === "realized" ? t.installment_plan_id ? "Paga" : "Realizada" : "Prevista",
+    t.expense_kind === "fixed" ? "Fixa" : t.expense_kind === "variable" ? "Variável" : "", categories.find((c) => c.id === t.category_id)?.name ?? "", t.description,
+    t.installment_plan_id ? t.description : "", t.installment_number?.toString() ?? "", t.total_installments?.toString() ?? "",
+    t.due_date?.split("-").reverse().join("/") ?? "", t.payment_date?.split("-").reverse().join("/") ?? "",
+    t.scheduled_amount_cents == null ? "" : inputMoney(t.scheduled_amount_cents), inputMoney(t.amount),
   ])];
   return "\uFEFF" + rows.map((row) => row.map(csvCell).join(";")).join("\r\n") + "\r\n";
 }

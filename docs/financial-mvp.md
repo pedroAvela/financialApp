@@ -170,3 +170,6 @@ Ou use `npm run test:rls:remote` quando essas variáveis já estiverem no ambien
 ## Pendências externas
 
 A aplicação do SQL, a inspeção de um possível schema remoto preexistente e a validação com contas reais dependem de acesso ao seu painel/projeto. Consulte `docs/verification.md` para os resultados efetivamente executados nesta entrega. O uso do SQL Editor para instalar as migrações não conta como teste de RLS do usuário.
+## Compras parceladas — 16/09/2026
+
+O suporte a compromissos finitos de 2 a 60 parcelas foi adicionado em uma etapa posterior ao MVP original. Siga [o guia de parcelamentos](installments.md) e aplique a migração 005 após 001–004. Faturas completas, fechamento e integração de cartão continuam fora do escopo. As parcelas pagas usam a data efetiva do pagamento nos totais; previstas usam o vencimento.

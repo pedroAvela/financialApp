@@ -95,3 +95,26 @@ No PostgreSQL local, as duas contas têm perfil, categorias, transações, recor
 Os testes públicos verificam 401 nas novas rotas sem sessão, 403 para POST de outra origem, 405 para GET de exclusão e a mensagem de conclusão no login. No Windows, o servidor Next criado pelo Playwright ficou aberto na finalização; somente esse processo foi encerrado para permitir a conclusão da suíte, que reportou todos os resultados acima com saída 0.
 
 **Pendências desta funcionalidade:** aplicar manualmente `supabase/migrations/202609140004_account_deletion.sql` depois de 001–003; configurar `SUPABASE_SERVICE_ROLE_KEY` exclusivamente no servidor; revisar eventuais tabelas/arquivos remotos fora do schema versionado; testar o fluxo autenticado da Zona de perigo, download da exportação, cookies e exclusão Auth/Storage real com contas descartáveis conforme [o roteiro de exclusão](account-deletion.md). Não foi excluída nenhuma conta remota, não foram carregadas credenciais administrativas para teste, e nenhuma migração foi aplicada remotamente nesta entrega. A aparência/interação da nova seção em uma sessão real e a remoção de bytes no Storage remoto ainda não foram verificadas por E2E autenticado.
+
+## Compras parceladas — 16/09/2026
+
+| Verificação executada | Resultado |
+| --- | --- |
+| `npm run lint` | Passou. |
+| `npm run typecheck` | Passou. |
+| `npm run test:unit` | 37 testes passaram, incluindo 7 cenários de valores, calendário, validação, totais e CSV de parcelas. |
+| `npm run test:db` | 28 testes passaram: 16 do schema anterior e 12 da migração/fluxos de parcelamento (contagem inclui os testes principais). |
+| `npm run build` | Passou, preservando as rotas existentes. |
+| `node ./node_modules/@playwright/test/cli.js test tests/installments-ui.spec.ts --workers=1 --trace=off` | 6 testes de interface passaram em desktop/celular. |
+| `node ./node_modules/@playwright/test/cli.js test --workers=1 --trace=off` | 71 testes passaram em 19,1 segundos; 6 E2E autenticados remotos ignorados, sem carregar as credenciais opcionais. |
+| Capturas da prévia de parcelas no tema escuro | Revisadas em desktop/celular, com ajuste de centavos, vencimentos e sem transbordamento horizontal da página. São capturas do harness dos componentes, sem o shell autenticado remoto. |
+
+O banco local aplica 005 sobre um lançamento existente e comprova preservação de seus dados. Testa R$ 100,00 em 3x e R$ 0,05 em 2x, janeiro com dia 31, fevereiro bissexto/não bissexto, valores/datas inválidos, soma exata e reenvios. Uma falha injetada na segunda parcela reverte plano, parcelas e registro da solicitação; a mesma falha durante edição preserva a programação anterior. A exclusão de um plano não pago mantém a chave mínima de idempotência, impedindo que um retry atrasado recrie a compra.
+
+Pagamento preserva ID, número, valor previsto e vencimento; a data e o valor efetivos entram nos realizados. Regeneração/exclusão de planos pagos e alterações diretas do histórico são recusadas. Edição segura e cancelamento mantêm a parcela paga intacta. RLS é verificado com duas contas sob `authenticated` e com `anon`, incluindo categorias/IDs alheios, tabelas e RPCs. A cascade da conta é testada separadamente com um papel restrito a SELECT/DELETE em `auth.users`, sem grants nas tabelas financeiras, removendo também as duas tabelas novas e preservando B.
+
+Os testes de navegador renderizam os componentes reais com a API interceptada: dois submits no mesmo instante produzem uma solicitação; falha mantém o UUID para retry; sucesso aparece somente após salvar; pagamento muda os totais do mês correto; edição e cancelamento exigem os controles esperados; CSV preserva vencimento, pagamento e valores. Isso não constitui E2E autenticado contra Supabase. `tests/fixtures` não adiciona rotas de teste nem bypass de autenticação ao aplicativo. O esbuild é uma dependência exclusiva de desenvolvimento usada para montar esse harness.
+
+Na primeira execução de interface, a restrição de leitura do ambiente bloqueou o esbuild; a execução autorizada fora dessa restrição resolveu o acesso. Os seletores de categoria e métrica foram corrigidos para usar o controle/nome exato. A suíte completa final passou, sem falhas pendentes.
+
+**Pendências remotas:** aplicar manualmente `supabase/migrations/202609160005_installments.sql` após 001–004; validar os fluxos autenticados e duas requisições HTTP concorrentes com a mesma chave em um projeto de testes; conferir o CSV no Excel. O PGlite tem uma conexão e não comprova concorrência HTTP real. Não foram aplicadas migrações, criadas compras ou excluídas contas no Supabase remoto nesta entrega. Consulte [o roteiro de instalação e testes](installments.md).

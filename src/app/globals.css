@@ -382,3 +382,13 @@ fieldset { border: 0; padding: 0; min-width: 0; }
 .button.account-delete-button:hover:not(:disabled) { background: #881e1e; }
 [data-theme="dark"] .account-danger-zone h2 { color: #ffaaa5; }
 [data-theme="dark"] .account-danger-zone { border-color: #c46c68; }
+
+.installment-toggle { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 24px; line-height: 1.6; cursor: pointer; }
+.installment-toggle input { width: 18px; height: 18px; margin-top: 3px; flex-shrink: 0; accent-color: var(--green); }
+.installment-preview { border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-block: 24px; }
+.installment-schedule { max-height: 320px; overflow: auto; margin-top: 16px; }
+.installment-row-note { display: block; color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px; }
+.installment-form .button { white-space: normal; }
+.installment-form h2 { margin-bottom: 12px; }
+.installment-form h2 + .muted { margin-bottom: 24px; }
+@media (max-width: 767px) { .installment-preview { padding: 16px; } }

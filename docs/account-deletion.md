@@ -81,3 +81,7 @@ Roteiro manual, depois de instalar 004 e configurar a variável privada:
 6. Reabra a tela antiga de A em outro dispositivo e repita: a sessão inválida deve voltar ao login. O painel administrativo ajuda a conferir a cascade; **não é um teste de RLS**. O teste RLS usa as sessões reais de A/B e a chave publicável.
 
 Referências oficiais: [exclusão administrativa](https://supabase.com/docs/reference/javascript/auth-admin-deleteuser), [dados do usuário e Storage](https://supabase.com/docs/guides/auth/managing-user-data) e [propriedade de objetos Storage](https://supabase.com/docs/guides/storage/security/ownership).
+
+## Complemento após a migração 005 — parcelamentos
+
+A migração `202609160005_installments.sql` adiciona `installment_plans` e `installment_requests`, ambas com RLS e FK direta para `auth.users(id) ON DELETE CASCADE`. A exclusão de conta passa a abranger as sete tabelas pessoais e todas as parcelas, inclusive pagas e canceladas. O registro mínimo de solicitações guarda apenas IDs, hash SHA-256 dos parâmetros e data, sendo removido junto à conta. A exportação JSON inclui essas duas tabelas; parcelas continuam dentro de `transactions`. A aplicação não precisa de DELETE manual adicional. Consulte [o guia de parcelamentos](installments.md). Não reaplique 004 após instalar 005: sua verificação de inventário foi feita para as tabelas existentes naquela versão; siga a ordem das migrações versionadas.

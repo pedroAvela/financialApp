@@ -6,6 +6,7 @@ import { ActionMessages, useFinanceAction } from "./finance-action";
 import { budgetUsage, currency, inputMoney } from "@/lib/finance";
 import { Icon } from "./icon";
 import { Progress } from "./ui";
+import { InstallmentsManager } from "./installment-details";
 import { RecurrencesManager } from "./recurrences-manager";
 import type { Category } from "@/types/finance";
 
@@ -42,7 +43,7 @@ function PlanningForms() {
   if (!data) return null;
   return <div className="space-y-6"><section className="panel form-panel"><div className="section-title"><span className="small-icon"><Icon name="plan" /></span><div><h2>Limites de despesas variáveis</h2><p>Válidos para o mês selecionado, sem transporte automático entre meses. Em branco remove o limite; zero é um limite configurado.</p></div></div>
     <BudgetForm key={month + "-general"} />
-    <h3 className="mt-6 mb-5">Limites por categoria</h3><div className="budget-grid">{data.categories.filter((c) => c.type === "expense" && (c.active || data.budgets.some((b) => b.category_id === c.id))).map((c) => <BudgetForm key={month + c.id} category={c} />)}</div><p className="form-note">Limites por categoria são independentes do geral. Somente despesas variáveis realizadas são comparadas aos limites.</p></section><RecurrencesManager /></div>;
+    <h3 className="mt-6 mb-5">Limites por categoria</h3><div className="budget-grid">{data.categories.filter((c) => c.type === "expense" && (c.active || data.budgets.some((b) => b.category_id === c.id))).map((c) => <BudgetForm key={month + c.id} category={c} />)}</div><p className="form-note">Limites por categoria são independentes do geral. Somente despesas variáveis realizadas são comparadas aos limites.</p></section><RecurrencesManager /><InstallmentsManager /></div>;
 }
 function BudgetForm({ category }: { category?: Category }) {
   const { data, month } = useFinance();

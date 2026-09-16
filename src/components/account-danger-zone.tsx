@@ -44,7 +44,7 @@ export function AccountDangerZone() {
 
   return <section className="panel form-panel account-danger-zone" aria-labelledby="danger-title" aria-busy={pending !== null}>
     <h2 id="danger-title">Zona de perigo</h2>
-    <p className="muted mt-3">Excluir sua conta é definitivo e não pode ser desfeito. Seu acesso, perfil, categorias, receitas, despesas, recorrências, orçamentos e eventuais arquivos serão apagados.</p>
+    <p className="muted mt-3">Excluir sua conta é definitivo e não pode ser desfeito. Seu acesso, perfil, categorias, receitas, despesas, compras parceladas, recorrências, orçamentos e eventuais arquivos serão apagados.</p>
     <p className="muted mt-3">Antes de continuar, você pode baixar seus dados financeiros de todos os períodos em JSON. Guarde a exportação em um local seguro.</p>
     <div className="form-actions mt-5">
       <button className="button secondary" type="button" disabled={pending !== null} onClick={exportData}>{pending === "export" ? "Exportando..." : "Exportar meus dados"}</button>

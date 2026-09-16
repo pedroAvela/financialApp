@@ -10,7 +10,7 @@
     "test": "playwright test",
     "test:unit": "playwright test --project=calculos",
     "typecheck": "next typegen && tsc --noEmit",
-    "test:db": "node --test scripts/database.test.mjs",
+    "test:db": "node --test scripts/database.test.mjs scripts/installments.test.mjs",
     "test:rls:remote": "node --test scripts/rls-remote.test.mjs"
   },
   "dependencies": {
@@ -27,6 +27,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",

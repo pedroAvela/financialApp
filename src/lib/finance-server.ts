@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { monthBounds, todayInTimezone } from "@/lib/finance";
+import { monthBounds, todayInTimezone, validDate } from "@/lib/finance";
 import * as v from "@/lib/finance-validation";
 import type { FinanceSnapshot, Profile } from "@/types/finance";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -8,6 +8,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export class FinanceError extends Error { constructor(message: string, public status = 400) { super(message); } }
 export function dbError(error: { code?: string } | null) {
   if (!error) return;
+  if (error.code === "P1101") throw new FinanceError("Esta solicitação já foi usada com outros dados ou a compra foi excluída. Confira seus parcelamentos antes de iniciar outra compra.", 409);
+  if (error.code === "P1102") throw new FinanceError("Há parcelas pagas ou canceladas protegidas. Atualize a tela; edite somente as informações futuras ou cancele as parcelas ainda não pagas.", 409);
+  if (error.code === "P1104") throw new FinanceError("Parcelamento ou parcela não encontrado para sua conta. Atualize a tela.", 404);
   if (["42P01", "42703", "PGRST202", "PGRST204", "PGRST205"].includes(error.code ?? "")) throw new FinanceError("O banco financeiro ainda não está configurado. Aplique as migrações indicadas no guia do projeto.", 503);
   if (error.code === "23505") throw new FinanceError("Já existe um registro com esses dados. Verifique os registros antes de tentar novamente.", 409);
   if (["23503", "23514", "22P02", "22003"].includes(error.code ?? "")) throw new FinanceError("Verifique os valores, as datas e se a categoria está ativa e corresponde ao tipo escolhido.");
@@ -23,7 +26,7 @@ export async function authenticatedClient() {
 async function allRows(client: SupabaseClient, table: string, userId: string, configure?: (query: ReturnType<ReturnType<SupabaseClient["from"]>["select"]>) => ReturnType<ReturnType<SupabaseClient["from"]>["select"]>) {
   const rows: unknown[] = [];
   for (let offset = 0; ; offset += 500) {
-    let query = client.from(table).select("*").eq("user_id", userId).order("id");
+    let query = client.from(table).select("*").eq("user_id", userId).order(table === "installment_requests" ? "client_request_id" : "id");
     if (configure) query = configure(query);
     const { data, error } = await query.range(offset, offset + 499);
     dbError(error);
@@ -36,11 +39,13 @@ async function allRows(client: SupabaseClient, table: string, userId: string, co
 export async function exportOwnFinance(client: SupabaseClient, userId: string) {
   const profile = await client.from("profiles").select("*").eq("user_id", userId).maybeSingle();
   dbError(profile.error);
-  const [categories, transactions, recurrences, budgets] = await Promise.all([
+  const [categories, transactions, recurrences, budgets, installmentPlans, installmentRequests] = await Promise.all([
     allRows(client, "categories", userId), allRows(client, "transactions", userId),
     allRows(client, "recurrences", userId), allRows(client, "budgets", userId),
+    allRows(client, "installment_plans", userId),
+    allRows(client, "installment_requests", userId),
   ]);
-  return { profile: profile.data, categories, transactions, recurrences, budgets };
+  return { profile: profile.data, categories, transactions, recurrences, budgets, installmentPlans, installmentRequests };
 }
 export async function snapshot(client: SupabaseClient, userId: string, requestedMonth: string | null): Promise<FinanceSnapshot> {
   dbError((await client.rpc("initialize_finance")).error);
@@ -52,17 +57,19 @@ export async function snapshot(client: SupabaseClient, userId: string, requested
   v.month(selectedMonth);
   const { start, end } = monthBounds(selectedMonth);
   dbError((await client.rpc("generate_occurrences", { p_month: start })).error);
-  const [categories, transactions, recurrences, budgets] = await Promise.all([
+  const [categories, transactions, recurrences, budgets, installmentPlans, installmentTransactions] = await Promise.all([
     allRows(client, "categories", userId),
     allRows(client, "transactions", userId, (q) => q.gte("date", start).lte("date", end).is("deleted_at", null)),
     allRows(client, "recurrences", userId),
     allRows(client, "budgets", userId, (q) => q.eq("month", start)),
+    allRows(client, "installment_plans", userId),
+    allRows(client, "transactions", userId, (q) => q.not("installment_plan_id", "is", null)),
   ]);
-  return { profile, categories, transactions, recurrences, budgets, month: selectedMonth, today } as FinanceSnapshot;
+  return { profile, categories, transactions, recurrences, budgets, installmentPlans, installmentTransactions, month: selectedMonth, today } as FinanceSnapshot;
 }
 async function updateOwned(client: SupabaseClient, table: string, userId: string, id: string, values: object) {
   let query = client.from(table).update(values).eq("user_id", userId).eq("id", id);
-  if (table === "transactions") query = query.is("deleted_at", null);
+  if (table === "transactions") query = query.is("deleted_at", null).is("installment_plan_id", null);
   const { data, error } = await query.select("id").maybeSingle();
   dbError(error);
   if (!data) throw new FinanceError("Registro não encontrado ou não disponível para sua conta.", 404);
@@ -71,6 +78,24 @@ export async function mutate(client: SupabaseClient, userId: string, body: unkno
   const request = v.object(body);
   const p = v.object(request.data);
   switch (request.action) {
+    case "installment.create":
+      dbError((await client.rpc("create_installment_plan", { ...v.installmentInput(p), p_request: v.uuid(p.client_request_id) })).error);
+      break;
+    case "installment.edit":
+      if (p.confirmed !== true) throw new v.ValidationError("Confirme a alteração do parcelamento.");
+      dbError((await client.rpc("edit_installment_plan", { ...v.installmentInput(p), p_plan: v.uuid(p.id), p_confirmed: true })).error);
+      break;
+    case "installment.pay": {
+      const date = v.text(p.payment_date, "a data do pagamento", 10, true);
+      if (!validDate(date)) throw new v.ValidationError("Informe uma data de pagamento válida.");
+      dbError((await client.rpc("pay_installment", { p_transaction: v.uuid(p.id), p_date: date, p_amount: v.money(p.amount) })).error);
+      break;
+    }
+    case "installment.cancel":
+    case "installment.delete":
+      if (p.confirmed !== true) throw new v.ValidationError("Confirme a operação sobre as parcelas.");
+      dbError((await client.rpc(request.action === "installment.cancel" ? "cancel_installment_plan" : "delete_installment_plan", { p_plan: v.uuid(p.id), p_confirmed: true })).error);
+      break;
     case "transaction.create": {
       const row = { ...v.transactionInput(p), id: v.uuid(p.id), user_id: userId };
       // A client-generated UUID is the idempotency key. Never update an existing
