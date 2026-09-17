@@ -8,6 +8,7 @@ export default defineConfig({
   use: { baseURL: "http://127.0.0.1:3100", trace: "retain-on-failure" },
   projects: [
     { name: "calculos", testMatch: ["finance.spec.ts", "auth-utils.spec.ts", "auth-confirm.spec.ts", "account-deletion.spec.ts", "installments.spec.ts"] },
+    { name: "seguranca", testMatch: ["security-browser.spec.ts"], use: { ...devices["Desktop Chrome"], channel: "chrome" } },
     { name: "desktop", testMatch: ["app.spec.ts", "auth.spec.ts", "installments-ui.spec.ts"], use: { ...devices["Desktop Chrome"], channel: "chrome", viewport: { width: 1440, height: 1000 } } },
     { name: "celular", testMatch: ["app.spec.ts", "auth.spec.ts", "installments-ui.spec.ts"], use: { ...devices["iPhone 13"], defaultBrowserType: "chromium", channel: "chrome" } },
   ],

@@ -118,3 +118,24 @@ Os testes de navegador renderizam os componentes reais com a API interceptada: d
 Na primeira execução de interface, a restrição de leitura do ambiente bloqueou o esbuild; a execução autorizada fora dessa restrição resolveu o acesso. Os seletores de categoria e métrica foram corrigidos para usar o controle/nome exato. A suíte completa final passou, sem falhas pendentes.
 
 **Pendências remotas:** aplicar manualmente `supabase/migrations/202609160005_installments.sql` após 001–004; validar os fluxos autenticados e duas requisições HTTP concorrentes com a mesma chave em um projeto de testes; conferir o CSV no Excel. O PGlite tem uma conexão e não comprova concorrência HTTP real. Não foram aplicadas migrações, criadas compras ou excluídas contas no Supabase remoto nesta entrega. Consulte [o roteiro de instalação e testes](installments.md).
+
+## Auditoria defensiva — 17/09/2026
+
+Relatório completo, inventário, achados e passos locais: [security-audit.md](security-audit.md).
+
+| Verificação executada | Resultado |
+| --- | --- |
+| `npm run lint` | PASS |
+| `npm run typecheck` | PASS |
+| `npm run build` | PASS; CSP com nonce e renderização dinâmica. |
+| `npm run test:unit` | PASS — 37 testes. |
+| `npm run test:db` | PASS — 28 testes. |
+| `node --test scripts/security-db.test.mjs scripts/security-app.test.mjs` | PASS — 174 testes, incluindo principais, 158 asserções SQL e 13 cenários de integração. |
+| `node ./node_modules/@playwright/test/cli.js test tests/auth.spec.ts tests/installments-ui.spec.ts tests/security-browser.spec.ts` | PASS — 38 testes de navegador local. |
+| `node scripts/security-scan.mjs --bundles` | PASS — nenhum indício de segredo nos arquivos/bundles examinados; saída sem valores. |
+| `npm audit --json` | PASS — zero vulnerabilidades conhecidas. |
+| `git diff --check` | PASS — sem erros de whitespace. |
+
+Foram adicionados headers defensivos, CSP e limites de corpo durante a leitura. Matriz de RLS cobre sete tabelas com A/B/anon, inclusive IDs existentes, propriedade, vínculos e originais intactos depois das tentativas. Integrações executam handlers reais com adaptadores de infraestrutura e PostgreSQL/PGlite; não são E2E do Supabase completo. CSV, HTML como texto, descarte de cache por identidade e logout também passaram no navegador.
+
+**NÃO EXECUTADO:** runner `supabase test db`, lint SQL do Supabase e Security Advisor completo por ausência de CLI/Docker; Auth/PostgREST/Storage reais, expiração de URLs assinadas e concorrência entre conexões independentes; testes autenticados remotos. O wrapper pgTAP está em `supabase/tests/security.test.sql`; sua matriz SQL compartilhada foi executada em PGlite. Nenhum SQL, conta ou infraestrutura remota foi alterado. Não foi necessário gerar migração nova.

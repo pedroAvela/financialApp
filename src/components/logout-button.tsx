@@ -14,7 +14,7 @@ export function LogoutButton({ className = "text-link mt-4" }: { className?: str
     try {
       const { error } = await createClient().auth.signOut({ scope: "local" });
       if (error) throw error;
-      // A full navigation also discards the in-memory financial demo and router cache.
+      // A full navigation also discards financial state and the router cache.
       window.location.replace("/login");
     } catch (error) {
       setError(authErrorMessage(error));

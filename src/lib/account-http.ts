@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { getSupabaseConfig } from "./supabase/config";
 import { AccountDeletionError } from "./account-deletion";
 import { FinanceError } from "./finance-server";
+import { RequestBodyError } from "./request-body";
 
 export const accountHeaders = { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" };
 export const deletedAccountRedirect = "/login?notice=conta_excluida";
@@ -20,7 +21,7 @@ export async function clearAccountCookies(response: NextResponse, request: NextR
 }
 
 export function accountFailure(error: unknown) {
-  const known = error instanceof AccountDeletionError || error instanceof FinanceError;
+  const known = error instanceof AccountDeletionError || error instanceof FinanceError || error instanceof RequestBodyError;
   return NextResponse.json({ error: known ? error.message : "Não foi possível concluir a operação. Tente novamente." }, {
     status: known ? error.status : 503, headers: accountHeaders,
   });

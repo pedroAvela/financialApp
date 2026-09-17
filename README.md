@@ -54,11 +54,17 @@ Valores são centavos inteiros, entre R$ 0,01 e R$ 999.999.999,99 por lançament
 | `npm run typecheck` | Geração de tipos de rotas e TypeScript sem emissão. |
 | `npm run test:unit` | Dinheiro, calendário, fuso, cálculos, CSV, validação e utilitários de autenticação; dispensa build/servidor. |
 | `npm run test:db` | Migrações, constraints, RLS e recorrências em PostgreSQL local em memória (PGlite). |
+| `npm run test:security` | Matriz A/B/anon e integrações dos handlers com PostgreSQL local, sem credenciais ou rede. |
+| `npm run test:security:browser` | CSP, XSS como texto, CSV, cache e logout em navegador local; exige build. |
+| `npm run test:pgtap` | `supabase test db`; exige CLI e stack Supabase local em Docker. |
+| `npm run security:scan` | Arquivos e bundles públicos: somente arquivo/linha de possíveis segredos; exige build. |
 | `npm run build` | Build de produção e tipos. |
 | `npm test` | Unitários e navegador; execute build antes. |
 | `npm run test:rls:remote` | Teste opcional com duas contas reais de teste e visitante, via API pública. |
 
 Playwright usa o Google Chrome local em modo headless, desktop e celular. O servidor temporário usa `127.0.0.1:3100`; deixe a porta livre. Artefatos ficam em `test-results/`.
+
+O [relatório de segurança](docs/security-audit.md) documenta achados, correções, cobertura, limitações de Auth/Storage e como executar pgTAP em um banco local descartável. Esta auditoria não aplica SQL nem executa testes no Supabase remoto.
 
 Os testes de autenticação pública interceptam o provedor e não enviam e-mails. Os testes financeiros de navegador exigem `E2E_EMAIL` e `E2E_PASSWORD`, de um projeto de testes com as migrações aplicadas. Sem essas variáveis, ficam explicitamente ignorados. O teste remoto de RLS exige ainda opt-in `RUN_REMOTE_RLS=1`; não é disparado por `npm test`.
 

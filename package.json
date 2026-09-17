@@ -11,6 +11,10 @@
     "test:unit": "playwright test --project=calculos",
     "typecheck": "next typegen && tsc --noEmit",
     "test:db": "node --test scripts/database.test.mjs scripts/installments.test.mjs",
+    "test:security": "node --test scripts/security-db.test.mjs scripts/security-app.test.mjs",
+    "test:security:browser": "playwright test --project=seguranca",
+    "test:pgtap": "supabase test db",
+    "security:scan": "node scripts/security-scan.mjs --bundles",
     "test:rls:remote": "node --test scripts/rls-remote.test.mjs"
   },
   "dependencies": {
