@@ -13,7 +13,10 @@ export interface InstallmentPlan {
   id: string; category_id: string; description: string; total_amount_cents: number; installment_count: number;
   purchase_date: string; first_due_date: string; payment_method: string | null; expense_kind: ExpenseKind;
   status: "active" | "cancelled"; client_request_id: string; created_at: string; updated_at: string;
+  /** Realized installments, computed by the installment_plan_summaries view. */
+  paid_count: number;
 }
+export interface UpcomingInstallments { month: string; count: number; amount: number }
 export interface Recurrence {
   id: string; category_id: string; type: TransactionType; amount: number; description: string; expense_kind: ExpenseKind | null;
   day_of_month: number; start_month: string; end_month: string | null; effective_month: string; active: boolean; setup_key: "income" | "fixed" | null;
@@ -21,5 +24,6 @@ export interface Recurrence {
 export interface Budget { id: string; month: string; category_id: string | null; amount: number }
 export interface FinanceSnapshot {
   profile: Profile; categories: Category[]; transactions: Transaction[]; recurrences: Recurrence[]; budgets: Budget[]; month: string; today: string;
-  installmentPlans: InstallmentPlan[]; installmentTransactions: Transaction[];
+  /** Planned installments due in the three months after `month`. */
+  installmentPlans: InstallmentPlan[]; upcomingInstallments: UpcomingInstallments[];
 }

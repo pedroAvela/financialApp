@@ -3,6 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 
 export const A = "a0000000-0000-4000-8000-000000000001", B = "b0000000-0000-4000-8000-000000000001";
 export const personalTables = ["profiles", "categories", "transactions", "recurrences", "budgets", "installment_plans", "installment_requests"];
+// Read-only security_invoker views; excluded from state() comparisons.
+const personalViews = ["installment_plan_summaries"];
 const identifier = (s) => { if (!/^[a-z_]+$/.test(s)) throw new Error("Identificador de teste inválido"); return `"${s}"`; };
 
 export async function databaseFixture() {
@@ -47,7 +49,7 @@ export async function databaseFixture() {
         async signOut() { uid = null; return { error: null }; },
       },
       from(table) {
-        if (!personalTables.includes(table)) throw new Error("Tabela de teste inesperada");
+        if (!personalTables.includes(table) && !personalViews.includes(table)) throw new Error("Tabela de teste inesperada");
         let action = "select", values, selected = "*", conflict = false, single = false, limit, offset;
         const filters = [], ordering = [];
         const q = {

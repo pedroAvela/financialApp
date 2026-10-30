@@ -34,9 +34,17 @@ export function FinanceProvider({ children, profile }: { children: ReactNode; pr
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
   function setMonth(value: string) { monthRef.current = value; setMonthState(value); void reload(); }
   async function mutate(action: string, values: Record<string, unknown>) {
-    const response = await fetch("/api/finance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, data: values }) });
+    const response = await fetch("/api/finance", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, data: values, month: monthRef.current }) });
     const result = await response.json();
     if (!response.ok || !result.saved) throw new Error(result.error || "Não foi possível salvar. Tente novamente.");
+    if (result.snapshot && result.snapshot.month === monthRef.current) {
+      // Supersede any load still in flight so it cannot overwrite fresher data.
+      generation.current++;
+      setData(result.snapshot);
+      setError("");
+      setLoading(false);
+      return;
+    }
     // A refresh failure is displayed separately; it must not suggest that a
     // successful write failed and encourage the user to submit it again.
     await reload();

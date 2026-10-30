@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { authenticatedClient, FinanceError, mutate, snapshot } from "@/lib/finance-server";
+import { authenticatedClient, FinanceError, installmentRows, mutate, snapshot } from "@/lib/finance-server";
 import { ValidationError } from "@/lib/finance-validation";
 import { isSameOrigin } from "@/lib/request-origin";
 import { readJsonBody, RequestBodyError } from "@/lib/request-body";
@@ -13,6 +13,8 @@ function failure(error: unknown) {
 export async function GET(request: NextRequest) {
   try {
     const { client, user } = await authenticatedClient();
+    const plan = request.nextUrl.searchParams.get("plan");
+    if (plan !== null) return NextResponse.json(await installmentRows(client, user.id, plan), { headers });
     return NextResponse.json(await snapshot(client, user.id, request.nextUrl.searchParams.get("month")), { headers });
   } catch (error) { return failure(error); }
 }
@@ -23,6 +25,13 @@ export async function POST(request: NextRequest) {
     const { client, user } = await authenticatedClient();
     const body = await readJsonBody(request, 65536);
     await mutate(client, user.id, body);
-    return NextResponse.json({ saved: true }, { headers });
+    // Return the refreshed month in the same request. A refresh failure must not
+    // turn a committed write into an error that invites a duplicate submission.
+    const month = (body as { month?: unknown }).month;
+    try {
+      return NextResponse.json({ saved: true, snapshot: await snapshot(client, user.id, typeof month === "string" && month ? month : null) }, { headers });
+    } catch {
+      return NextResponse.json({ saved: true }, { headers });
+    }
   } catch (error) { return failure(error); }
 }

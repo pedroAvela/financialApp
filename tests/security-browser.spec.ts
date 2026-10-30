@@ -21,7 +21,7 @@ test.beforeEach(async({page})=>{
 });
 function snapshot(who:string):FinanceSnapshot {
   const description=who==="A" ? '<img src=x onerror="window.__injected=1"><script>window.__injected=1</script>' : "B_PRIVATE";
-  return {profile:{user_id:who,name:who,timezone:"America/Sao_Paulo",currency:"BRL",locale:"pt-BR",onboarding_completed:true},month:"2025-01",today:"2025-01-10",categories:[{id:"cat",name:'<svg onload="window.__injected=2">',type:"expense",color:"#137968",active:true,default_key:null}],transactions:[description,"=1+1","+cmd","-cmd","@SUM(1)"].map((text,i)=>({id:String(i),category_id:"cat",description:text,amount:100,date:"2025-01-10",type:"expense",status:"realized",expense_kind:"variable",recurrence_id:null,occurrence_month:null})),recurrences:[],budgets:[],installmentPlans:[],installmentTransactions:[]};
+  return {profile:{user_id:who,name:who,timezone:"America/Sao_Paulo",currency:"BRL",locale:"pt-BR",onboarding_completed:true},month:"2025-01",today:"2025-01-10",categories:[{id:"cat",name:'<svg onload="window.__injected=2">',type:"expense",color:"#137968",active:true,default_key:null}],transactions:[description,"=1+1","+cmd","-cmd","@SUM(1)"].map((text,i)=>({id:String(i),category_id:"cat",description:text,amount:100,date:"2025-01-10",type:"expense",status:"realized",expense_kind:"variable",recurrence_id:null,occurrence_month:null})),recurrences:[],budgets:[],installmentPlans:[],upcomingInstallments:[]};
 }
 async function mount(page:Page,onGet:()=>Promise<FinanceSnapshot> = async()=>snapshot("A")) {
   await page.route("**/api/finance*",async(route)=>route.fulfill({json:await onGet()}));

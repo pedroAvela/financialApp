@@ -22,13 +22,14 @@ O projeto não aplica migrações nem publica infraestrutura automaticamente. Se
 - Receitas e despesas com criação, edição, exclusão confirmada e situação prevista/realizada.
 - Histórico por mês, intervalo dentro do mês, tipo, categoria, situação e descrição.
 - CSV dos registros filtrados com BOM UTF-8, separador `;`, vírgula decimal e proteção contra fórmulas.
-- Regras mensais de receitas/despesas e geração idempotente de ocorrências ao consultar o período. Receitas recorrentes até hoje passam a realizadas pela data do perfil.
+- Regras mensais de receitas/despesas e geração idempotente de ocorrências ao consultar o período, até 24 meses à frente; meses já gerados são lidos sem escrita. Receitas recorrentes até hoje passam a realizadas pela data do perfil.
+- Compras parceladas de 2 a 60 parcelas, com pagamento, edição e cancelamento das futuras.
 - Orçamentos variáveis por mês, gerais e por categoria.
 - Dashboard real e avisos internos em 70%, 85% e 100% do orçamento variável.
 - Perfil e fuso horário persistidos.
 - Tema claro/escuro com preferência do navegador e espaçamento ajustado entre os blocos.
 
-Não há integração bancária, cartões/parcelamento, push, investimentos, aplicativos nativos ou execução agendada de recorrências.
+Não há integração bancária, faturas de cartão, push, investimentos, aplicativos nativos ou execução agendada de recorrências.
 
 ## Regras financeiras
 

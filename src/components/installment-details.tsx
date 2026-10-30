@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { InstallmentPlan, Transaction } from "@/types/finance";
 import { currency, inputMoney } from "@/lib/finance";
@@ -9,15 +9,34 @@ import { InstallmentForm } from "./installment-form";
 
 const fullDate = (value?: string | null) => value?.split("-").reverse().join("/") ?? "—";
 
+/** Loads one plan's installments; refetches whenever the snapshot is replaced. */
+function usePlanRows(planId: string, version: unknown) {
+  const [state, setState] = useState<{ rows: Transaction[] | null; error: string }>({ rows: null, error: "" });
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/finance?plan=" + encodeURIComponent(planId), { cache: "no-store", signal: controller.signal }).then(async (response) => {
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Não foi possível carregar as parcelas.");
+      if (!controller.signal.aborted) setState({ rows: result.rows, error: "" });
+    }).catch((error) => {
+      if (!controller.signal.aborted) setState((current) => ({ ...current, error: error instanceof Error ? error.message : "Falha ao consultar as parcelas." }));
+    });
+    return () => controller.abort();
+  }, [planId, version]);
+  return state;
+}
+
 export function InstallmentDetails({ planId, onClose, initialPaymentId }: { planId: string; onClose: () => void; initialPaymentId?: string }) {
   const { data } = useFinance();
   const action = useFinanceAction();
   const [editing, setEditing] = useState(false);
   const [confirmation, setConfirmation] = useState<"cancel" | "delete" | null>(null);
   const [paying, setPaying] = useState(initialPaymentId ?? null);
+  const loaded = usePlanRows(planId, data);
   const plan = data?.installmentPlans.find((p) => p.id === planId);
   if (!data || !plan) return <section className="panel form-panel"><p role="status">Este parcelamento não está mais disponível.</p><button className="button secondary mt-4" onClick={onClose}>Voltar</button></section>;
-  const rows = data.installmentTransactions.filter((t) => t.installment_plan_id === planId).sort((a, b) => a.installment_number! - b.installment_number!);
+  if (!loaded.rows) return <section className="panel form-panel">{loaded.error ? <p role="alert" className="error-message">{loaded.error}</p> : <p role="status">Carregando parcelas...</p>}<button className="button secondary mt-4" onClick={onClose}>Voltar</button></section>;
+  const rows = [...loaded.rows].sort((a, b) => a.installment_number! - b.installment_number!);
   const paid = rows.filter((t) => t.status === "realized");
   const pending = rows.filter((t) => t.status === "planned" && !t.deleted_at);
   const payment = pending.find((t) => t.id === paying);
@@ -59,7 +78,7 @@ export function InstallmentsManager() {
   if (selected) return <InstallmentDetails key={selected} planId={selected} onClose={() => setSelected(null)} />;
   return <section className="panel form-panel" aria-label="Compras parceladas"><div className="section-title"><div><h2>Compras parceladas</h2><p>Compromissos de todos os períodos, separados das regras recorrentes mensais.</p></div></div>
     {!data.installmentPlans.length ? <div className="empty-state"><p>Você ainda não tem compras parceladas.</p><Link href="/lancamento" className="text-link mt-4">Adicionar uma compra</Link></div> : <ul className="management-list">{[...data.installmentPlans].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((plan) => {
-      const paid = data.installmentTransactions.filter((t) => t.installment_plan_id === plan.id && t.status === "realized").length;
+      const paid = plan.paid_count;
       return <li key={plan.id}><div><strong>{plan.description}</strong><p className="muted mt-2">{currency(plan.total_amount_cents)} · {plan.installment_count} parcelas · {paid} pagas{plan.status === "cancelled" ? " · Futuras canceladas" : paid === plan.installment_count ? " · Quitada" : ""}</p></div><button className="text-link" onClick={() => setSelected(plan.id)} aria-label={"Ver parcelamento " + plan.description}>Ver detalhes</button></li>;
     })}</ul>}
   </section>;

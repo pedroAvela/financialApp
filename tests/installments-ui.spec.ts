@@ -2,7 +2,8 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { build } from "esbuild";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
-import type { FinanceSnapshot, InstallmentPlan } from "../src/types/finance";
+import type { FinanceSnapshot, InstallmentPlan, Transaction } from "../src/types/finance";
+import { upcomingInstallments } from "../src/lib/installments";
 
 const planId="11111111-1111-4111-8111-111111111111", categoryId="22222222-2222-4222-8222-222222222222";
 let bundle="", styles:string[]=[];
@@ -11,18 +12,26 @@ test.beforeAll(async () => {
   bundle=result.outputFiles[0].text.replace(/<\/script/gi,"<\\/script");
   styles=(await readdir(".next/static/chunks")).filter((file) => file.endsWith(".css")).map((file) => "/_next/static/chunks/"+file);
 });
-function fixture(paid=false):FinanceSnapshot {
-  const plan:InstallmentPlan={id:planId,category_id:categoryId,description:"Computador",total_amount_cents:10000,installment_count:3,purchase_date:"2025-01-10",first_due_date:"2025-01-31",payment_method:"Boleto",expense_kind:"variable",status:"active",client_request_id:planId,created_at:"2025-01-10T00:00:00Z",updated_at:"2025-01-10T00:00:00Z"};
+// Mock database state; GET derives the API response shape from it.
+type MockState = Omit<FinanceSnapshot,"installmentPlans"|"upcomingInstallments"> & {installmentPlans:Omit<InstallmentPlan,"paid_count">[];installmentTransactions:Transaction[]};
+function fixture(paid=false):MockState {
+  const plan:Omit<InstallmentPlan,"paid_count">={id:planId,category_id:categoryId,description:"Computador",total_amount_cents:10000,installment_count:3,purchase_date:"2025-01-10",first_due_date:"2025-01-31",payment_method:"Boleto",expense_kind:"variable",status:"active",client_request_id:planId,created_at:"2025-01-10T00:00:00Z",updated_at:"2025-01-10T00:00:00Z"};
   const installments=["2025-01-31","2025-02-28","2025-03-31"].map((due,index) => ({id:`00000000-0000-4000-8000-00000000000${index+1}`,category_id:categoryId,description:"Computador",amount:index===2?3334:3333,type:"expense" as const,status:"planned" as "planned"|"realized",expense_kind:"variable" as const,date:due,recurrence_id:null,occurrence_month:null,installment_plan_id:planId,installment_number:index+1,total_installments:3,due_date:due,payment_date:null as string|null,scheduled_amount_cents:index===2?3334:3333,deleted_at:null as string|null}));
   if(paid) Object.assign(installments[0],{status:"realized",date:"2025-02-05",payment_date:"2025-02-05",amount:3500});
   return {profile:{user_id:planId,name:"Teste",timezone:"America/Sao_Paulo",currency:"BRL",locale:"pt-BR",onboarding_completed:true},categories:[{id:categoryId,name:"Outros",color:"#137968",active:true,type:"expense",default_key:null}],transactions:[],recurrences:[],budgets:[{id:"budget",month:"2025-02-01",category_id:null,amount:10000}],month:"2025-01",today:"2025-02-10",installmentPlans:[plan],installmentTransactions:installments};
 }
 type Action = {action:string;data:Record<string,unknown>};
-async function mount(page:Page,state:FinanceSnapshot,view:string,onPost:(request:Action,route:Route)=>Promise<void>) {
+async function mount(page:Page,state:MockState,view:string,onPost:(request:Action,route:Route)=>Promise<void>) {
   await page.route("**/api/finance*",async(route) => {
     if(route.request().method()==="POST") return onPost(route.request().postDataJSON(),route);
-    const month=new URL(route.request().url()).searchParams.get("month")||state.month;
-    await route.fulfill({json:{...state,month,transactions:state.installmentTransactions.filter((t)=>!t.deleted_at&&t.date.startsWith(month))}});
+    const params=new URL(route.request().url()).searchParams, plan=params.get("plan");
+    if(plan) return route.fulfill({json:{rows:state.installmentTransactions.filter((t)=>t.installment_plan_id===plan)}});
+    const month=params.get("month")||state.month;
+    const {installmentTransactions:rows,...snapshot}=state;
+    const response:FinanceSnapshot={...snapshot,month,transactions:rows.filter((t)=>!t.deleted_at&&t.date.startsWith(month)),
+      installmentPlans:state.installmentPlans.map((p)=>({...p,paid_count:rows.filter((t)=>t.installment_plan_id===p.id&&t.status==="realized").length})),
+      upcomingInstallments:upcomingInstallments(rows,month)};
+    await route.fulfill({json:response});
   });
   await page.route("**/__installment-ui?**",(route)=>route.fulfill({contentType:"text/html",body:`<!doctype html><html lang="pt-BR"><head><meta name="viewport" content="width=device-width, initial-scale=1">${styles.map((href)=>`<link rel="stylesheet" href="${href}">`).join("")}</head><body><div id="root"></div><script>${bundle}</script></body></html>`}));
   await page.goto("/__installment-ui?view="+view);

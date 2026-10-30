@@ -2,7 +2,8 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { monthBounds, todayInTimezone, validDate } from "@/lib/finance";
 import * as v from "@/lib/finance-validation";
-import type { FinanceSnapshot, Profile } from "@/types/finance";
+import { offsetMonth, upcomingInstallments } from "@/lib/installments";
+import type { FinanceSnapshot, Profile, Transaction } from "@/types/finance";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export class FinanceError extends Error { constructor(message: string, public status = 400) { super(message); } }
@@ -48,24 +49,40 @@ export async function exportOwnFinance(client: SupabaseClient, userId: string) {
   return { profile: profile.data, categories, transactions, recurrences, budgets, installmentPlans, installmentRequests };
 }
 export async function snapshot(client: SupabaseClient, userId: string, requestedMonth: string | null): Promise<FinanceSnapshot> {
-  dbError((await client.rpc("initialize_finance")).error);
-  const profileResult = await client.from("profiles").select("*").eq("user_id", userId).single();
+  // Signup creates the profile; initialize only accounts that predate it.
+  let profileResult = await client.from("profiles").select("*").eq("user_id", userId).maybeSingle();
   dbError(profileResult.error);
+  if (!profileResult.data) {
+    dbError((await client.rpc("initialize_finance")).error);
+    profileResult = await client.from("profiles").select("*").eq("user_id", userId).maybeSingle();
+    dbError(profileResult.error);
+    if (!profileResult.data) throw new FinanceError("Não foi possível preparar seu perfil financeiro. Tente novamente.", 503);
+  }
   const profile = profileResult.data as Profile;
   const today = todayInTimezone(profile.timezone);
   const selectedMonth = requestedMonth || today.slice(0, 7);
   v.month(selectedMonth);
   const { start, end } = monthBounds(selectedMonth);
+  // Writes and locks only when the month still has missing or due occurrences.
   dbError((await client.rpc("generate_occurrences", { p_month: start })).error);
-  const [categories, transactions, recurrences, budgets, installmentPlans, installmentTransactions] = await Promise.all([
+  const upcomingStart = monthBounds(offsetMonth(selectedMonth, 1)).start;
+  const upcomingEnd = monthBounds(offsetMonth(selectedMonth, 3)).end;
+  const [categories, transactions, recurrences, budgets, installmentPlans, upcoming] = await Promise.all([
     allRows(client, "categories", userId),
     allRows(client, "transactions", userId, (q) => q.gte("date", start).lte("date", end).is("deleted_at", null)),
     allRows(client, "recurrences", userId),
     allRows(client, "budgets", userId, (q) => q.eq("month", start)),
-    allRows(client, "installment_plans", userId),
-    allRows(client, "transactions", userId, (q) => q.not("installment_plan_id", "is", null)),
+    allRows(client, "installment_plan_summaries", userId),
+    allRows(client, "transactions", userId, (q) => q.not("installment_plan_id", "is", null).eq("status", "planned").is("deleted_at", null).gte("due_date", upcomingStart).lte("due_date", upcomingEnd)),
   ]);
-  return { profile, categories, transactions, recurrences, budgets, installmentPlans, installmentTransactions, month: selectedMonth, today } as FinanceSnapshot;
+  return {
+    profile, categories, transactions, recurrences, budgets, installmentPlans,
+    upcomingInstallments: upcomingInstallments(upcoming as Transaction[], selectedMonth), month: selectedMonth, today,
+  } as FinanceSnapshot;
+}
+/** All installments of one plan, loaded only when its details are opened. */
+export async function installmentRows(client: SupabaseClient, userId: string, planId: unknown) {
+  return { rows: await allRows(client, "transactions", userId, (q) => q.eq("installment_plan_id", v.uuid(planId))) as Transaction[] };
 }
 async function updateOwned(client: SupabaseClient, table: string, userId: string, id: string, values: object) {
   let query = client.from(table).update(values).eq("user_id", userId).eq("id", id);

@@ -173,3 +173,14 @@ A aplicação do SQL, a inspeção de um possível schema remoto preexistente e 
 ## Compras parceladas — 16/09/2026
 
 O suporte a compromissos finitos de 2 a 60 parcelas foi adicionado em uma etapa posterior ao MVP original. Siga [o guia de parcelamentos](installments.md) e aplique a migração 005 após 001–004. Faturas completas, fechamento e integração de cartão continuam fora do escopo. As parcelas pagas usam a data efetiva do pagamento nos totais; previstas usam o vencimento.
+
+## Leitura do mês sem bloqueios (migração 006)
+
+Aplique `supabase/migrations/202610300006_read_path.sql` após 001–005. Ela não remove tabelas nem dados:
+
+- `generate_occurrences` só grava e bloqueia linhas quando o mês consultado ainda tem ocorrências faltando ou receitas vencidas para realizar. Um mês já gerado é lido sem escrita.
+- Projeções de recorrências param 24 meses após o mês atual do perfil. Consultar meses mais distantes não cria registros.
+- A view `installment_plan_summaries` (`security_invoker`, sujeita à RLS) informa as parcelas pagas por compra. O snapshot do mês não carrega mais todas as parcelas: os detalhes de uma compra buscam suas parcelas sob demanda (`GET /api/finance?plan=<id>`), e o dashboard recebe só o resumo dos três meses seguintes.
+- `initialize_finance()` deixa de ser chamada a cada consulta; o snapshot só a usa quando o perfil ainda não existe.
+- `POST /api/finance` devolve o snapshot atualizado do mês na própria resposta, evitando uma segunda requisição após cada alteração.
+
