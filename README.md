@@ -63,6 +63,13 @@ Valores são centavos inteiros, entre R$ 0,01 e R$ 999.999.999,99 por lançament
 | `npm test` | Unitários e navegador; execute build antes. |
 | `npm run test:rls:remote` | Teste opcional com duas contas reais de teste e visitante, via API pública. |
 
+### Integração contínua
+
+- `.github/workflows/ci.yml`: em todo pull request e push na `main`, executa lint, tipos, `test:unit`, `test:db`, `test:security`, build, `security:scan` e os testes de navegador. Usa valores fictícios do Supabase; nenhuma credencial é necessária.
+- `.github/workflows/migrations.yml`: quando `supabase/migrations/` muda, testa as migrações no PGlite e roda `supabase db push --dry-run`. Na `main` (ou manualmente, em *Run workflow*), aplica as pendentes com `supabase db push`. Exige os segredos `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD` e `SUPABASE_PROJECT_ID`.
+
+Antes do primeiro uso, se as migrações foram instaladas pelo SQL Editor, registre-as uma vez com `supabase migration repair --status applied <versões>` (confira com `supabase migration list`). Nunca edite uma migração já aplicada; crie um novo arquivo. Aplique migrações exigidas pelo código antes de publicar esse código.
+
 Playwright usa o Google Chrome local em modo headless, desktop e celular. O servidor temporário usa `127.0.0.1:3100`; deixe a porta livre. Artefatos ficam em `test-results/`.
 
 O [relatório de segurança](docs/security-audit.md) documenta achados, correções, cobertura, limitações de Auth/Storage e como executar pgTAP em um banco local descartável. Esta auditoria não aplica SQL nem executa testes no Supabase remoto.
